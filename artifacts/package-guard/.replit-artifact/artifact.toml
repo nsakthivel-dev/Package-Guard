@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "PackageGuard"
+version = "1.0.0"
+id = "artifacts/package-guard"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21927
+
+[services.development]
+run = "pnpm --filter @workspace/package-guard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/package-guard", "run", "build" ]
+publicDir = "artifacts/package-guard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21927"
+BASE_PATH = "/"

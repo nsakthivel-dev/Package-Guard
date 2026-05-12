@@ -1,0 +1,387 @@
+You are an expert Electron + React developer. Build a complete cross-platform 
+desktop SaaS application called **PackageGuard** — a GUI-based package manager 
+dashboard that lets users view, manage, and update installed packages (pip, npm) 
+without using the terminal.
+
+---
+
+## TECH STACK
+
+- Electron (latest stable) — desktop shell
+- React 18 + Vite — frontend renderer
+- Tailwind CSS + shadcn/ui — UI components
+- Zustand — global state management
+- Node.js child_process — execute pip/npm commands
+- Axios — PyPI and npm registry API calls
+- better-sqlite3 — local SQLite database
+- electron-builder — app packaging
+
+---
+
+## PROJECT STRUCTURE
+
+packageguard/
+├── electron/
+│   ├── main.js                  # Electron main process
+│   ├── preload.js               # Context bridge (IPC)
+│   └── handlers/
+│       ├── pipHandler.js        # pip command execution
+│       ├── npmHandler.js        # npm command execution
+│       ├── envScanner.js        # Detect virtualenvs, conda, nvm
+│       ├── versionChecker.js    # PyPI + npm registry API calls
+│       ├── snapshotHandler.js   # Export/restore requirements.txt & package.json
+│       └── dbHandler.js         # SQLite operations
+├── src/
+│   ├── main.jsx                 # React entry
+│   ├── App.jsx                  # Root component + routing
+│   ├── store/
+│   │   └── usePackageStore.js   # Zustand global store
+│   ├── pages/
+│   │   ├── Dashboard.jsx        # Main package list view
+│   │   ├── Environments.jsx     # Env selector and details
+│   │   ├── Snapshots.jsx        # Snapshot list + restore
+│   │   └── History.jsx          # Update audit log
+│   ├── components/
+│   │   ├── PackageTable.jsx     # Sortable, filterable package list
+│   │   ├── PackageCard.jsx      # Single package row/card
+│   │   ├── GroupView.jsx        # Packages grouped by category
+│   │   ├── UpdateProgress.jsx   # Per-package progress bars
+│   │   ├── CompatWarning.jsx    # Compatibility warning dialog
+│   │   ├── SnapshotModal.jsx    # Snapshot create/restore modal
+│   │   ├── SafeModeToggle.jsx   # Safe/Full update mode switch
+│   │   └── Sidebar.jsx          # Navigation sidebar
+│   └── lib/
+│       ├── groupTags.js         # Package → category mapping
+│       └── compatMatrix.js      # Known incompatible version pairs
+├── database/
+│   └── schema.sql               # SQLite schema
+├── package.json
+├── vite.config.js
+└── electron-builder.config.js
+
+---
+
+## CORE FEATURES TO BUILD
+
+### 1. PACKAGE DISCOVERY
+
+In `electron/handlers/pipHandler.js`:
+- Run `pip list --format=json` to get all installed Python packages
+- Run `pip show <package>` to get metadata (version, location, dependencies)
+- Detect all virtualenvs by scanning common paths:
+  (~/.virtualenvs, ./venv, ./env, ./.venv)
+- Detect conda environments via `conda env list --json`
+
+In `electron/handlers/npmHandler.js`:
+- Run `npm list -g --json --depth=0` for global npm packages
+- Detect nvm-managed node versions via `nvm ls` or scanning ~/.nvm/versions/
+- Run `npm list --json --depth=0` in detected project directories
+
+In `electron/handlers/envScanner.js`:
+- Return a unified environment list:
+  [{ id, name, type: 'pip'|'venv'|'conda'|'npm'|'nvm', path, packages: [] }]
+
+### 2. VERSION CHECKING
+
+In `electron/handlers/versionChecker.js`:
+- For each pip package: call `https://pypi.org/pypi/{package}/json`
+  and extract `info.version` as latest
+- For each npm package: call `https://registry.npmjs.org/{package}/latest`
+  and extract `version` as latest
+- Compare installed vs latest using semver:
+  - Same → status: 'up-to-date'
+  - Patch diff → status: 'patch'
+  - Minor diff → status: 'minor'
+  - Major diff → status: 'major'
+- Batch API calls with concurrency limit of 5 to avoid rate limiting
+- Cache results in SQLite for 6 hours
+
+### 3. SMART GROUPING
+
+In `src/lib/groupTags.js`:
+Define a mapping object:
+{
+  'ML / AI': ['torch', 'tensorflow', 'numpy', 'scikit-learn', 'transformers',
+              'keras', 'xgboost', 'lightgbm', 'opencv-python', 'pillow',
+              'huggingface-hub', 'diffusers', 'accelerate', 'datasets'],
+
+  'Data': ['pandas', 'matplotlib', 'seaborn', 'plotly', 'polars',
+           'scipy', 'statsmodels', 'sqlalchemy', 'pyarrow', 'openpyxl'],
+
+  'Web': ['flask', 'fastapi', 'django', 'requests', 'httpx', 'aiohttp',
+          'uvicorn', 'gunicorn', 'starlette', 'express', 'axios',
+          'cors', 'dotenv', 'nodemon'],
+
+  'Dev Tools': ['pytest', 'black', 'mypy', 'flake8', 'pylint', 'isort',
+                'pre-commit', 'eslint', 'prettier', 'jest', 'ts-node',
+                'typescript', 'webpack', 'vite'],
+
+  'Others': [] // catch-all
+}
+- Any package not in above lists → 'Others'
+- User can manually reassign a package to a different group
+  (persist in SQLite table: user_tags)
+
+### 4. COMPATIBILITY WARNING ENGINE
+
+In `src/lib/compatMatrix.js`:
+Define known breaking pairs:
+{
+  warnings: [
+    {
+      package: 'torch',
+      targetVersionMin: '2.0.0',
+      requires: { package: 'numpy', minVersion: '1.26.0' },
+      message: 'PyTorch 2.x requires numpy >= 1.26.0'
+    },
+    {
+      package: 'tensorflow',
+      targetVersionMin: '2.13.0',
+      requires: { package: 'numpy', minVersion: '1.23.0' },
+      message: 'TensorFlow 2.13+ requires numpy >= 1.23.0'
+    }
+    // add more as needed
+  ]
+}
+
+Before executing any update:
+- Loop through selected packages
+- Check compatMatrix for each package being updated
+- If a dependency package is installed at a lower version than required,
+  show CompatWarning dialog with:
+  - What will break
+  - Suggested fix (update dependency first)
+  - Option: "Auto-fix order" (reorders update queue correctly)
+  - Option: "Update anyway" (with red warning)
+  - Option: "Cancel"
+
+### 5. SAFE UPDATE MODE
+
+In Zustand store (`usePackageStore.js`):
+- State: `safeMode: true` (default)
+
+Behavior when safeMode is ON:
+- Automatically select only 'patch' status packages for "Update All"
+- Show 'minor' and 'major' packages with a lock icon
+- Clicking a locked package shows: "Safe Mode is ON. This is a MAJOR update.
+  Disable Safe Mode or update manually."
+- SafeModeToggle component in header — toggle with confirmation dialog
+  when switching to Full Mode
+
+### 6. SNAPSHOT SYSTEM
+
+In `electron/handlers/snapshotHandler.js`:
+
+createSnapshot(envId):
+- For pip/venv/conda envs: run `pip freeze > snapshot_<timestamp>.txt`
+- For npm: copy current package.json + package-lock.json
+- Save snapshot metadata to SQLite:
+  { id, envId, name, timestamp, filePath, packageCount }
+- Auto-trigger before any bulk update
+
+restoreSnapshot(snapshotId):
+- For pip: run `pip install -r <snapshot_file>`
+- For npm: run `npm install` with restored package.json
+- Show restore progress same as update progress view
+
+In `src/pages/Snapshots.jsx`:
+- List all snapshots grouped by environment
+- Each snapshot card shows: name, date, package count, env name
+- Buttons: "Restore", "Download", "Delete"
+- "Create Manual Snapshot" button at top
+
+### 7. UPDATE EXECUTION ENGINE
+
+In `electron/handlers/pipHandler.js` and `npmHandler.js`:
+
+updatePackage(packageName, targetVersion, envPath):
+- Run `pip install <package>==<version>` or `npm install <package>@<version>`
+- Stream stdout/stderr back to renderer via IPC events:
+  ipcMain.emit('update:progress', { package, percent, status, message })
+
+In `src/components/UpdateProgress.jsx`:
+- Listen to IPC events via window.electronAPI.onUpdateProgress
+- Show per-package card:
+  [ Package Name ]  [ ████████░░ 80% ]  [ Installing... ]
+- Status values: 'queued' | 'installing' | 'done' | 'failed'
+- On 'failed': show error reason in a collapsible section (not raw CLI dump)
+- Post-update summary modal:
+  "X packages updated successfully. X failed. X skipped."
+- Cancel button: kills active child_process
+
+### 8. HISTORY & AUDIT LOG
+
+SQLite table `update_history`:
+  id, package_name, ecosystem, env_name,
+  from_version, to_version, status, error_message, updated_at
+
+In `src/pages/History.jsx`:
+- Table view with columns: Package, Ecosystem, From, To, Status, Date
+- Filter by: date range, ecosystem, status (success/failed)
+- Export as CSV button
+- Click row → expand to show full error if failed
+
+---
+
+## DATABASE SCHEMA
+
+In `database/schema.sql`:
+
+CREATE TABLE packages (
+  id INTEGER PRIMARY KEY,
+  name TEXT, ecosystem TEXT, env_id TEXT,
+  installed_version TEXT, latest_version TEXT,
+  status TEXT, group_name TEXT, last_checked INTEGER
+);
+
+CREATE TABLE environments (
+  id TEXT PRIMARY KEY,
+  name TEXT, type TEXT, path TEXT, is_active INTEGER
+);
+
+CREATE TABLE snapshots (
+  id INTEGER PRIMARY KEY,
+  env_id TEXT, name TEXT, file_path TEXT,
+  package_count INTEGER, created_at INTEGER
+);
+
+CREATE TABLE update_history (
+  id INTEGER PRIMARY KEY,
+  package_name TEXT, ecosystem TEXT, env_name TEXT,
+  from_version TEXT, to_version TEXT,
+  status TEXT, error_message TEXT, updated_at INTEGER
+);
+
+CREATE TABLE user_tags (
+  package_name TEXT PRIMARY KEY,
+  group_name TEXT
+);
+
+CREATE TABLE version_cache (
+  package_name TEXT PRIMARY KEY,
+  ecosystem TEXT, latest_version TEXT, cached_at INTEGER
+);
+
+---
+
+## IPC BRIDGE (preload.js)
+
+Expose the following via contextBridge as `window.electronAPI`:
+
+{
+  // Discovery
+  scanEnvironments: () => ipcRenderer.invoke('scan:environments'),
+  getPackages: (envId) => ipcRenderer.invoke('packages:get', envId),
+
+  // Version
+  checkVersions: (packages) => ipcRenderer.invoke('versions:check', packages),
+
+  // Updates
+  updatePackage: (pkg, version, envPath) =>
+    ipcRenderer.invoke('update:package', pkg, version, envPath),
+  updateBatch: (packages, envPath) =>
+    ipcRenderer.invoke('update:batch', packages, envPath),
+  cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
+  onUpdateProgress: (cb) =>
+    ipcRenderer.on('update:progress', (_, data) => cb(data)),
+
+  // Snapshots
+  createSnapshot: (envId) => ipcRenderer.invoke('snapshot:create', envId),
+  restoreSnapshot: (snapshotId) =>
+    ipcRenderer.invoke('snapshot:restore', snapshotId),
+  getSnapshots: () => ipcRenderer.invoke('snapshot:list'),
+
+  // History
+  getHistory: (filters) => ipcRenderer.invoke('history:get', filters),
+  exportHistory: () => ipcRenderer.invoke('history:export'),
+}
+
+---
+
+## UI DESIGN RULES
+
+- Dark theme by default, light mode toggle in settings
+- Sidebar navigation: Dashboard | Environments | Snapshots | History | Settings
+- Color system for status badges:
+    'up-to-date' → green
+    'patch'      → blue
+    'minor'      → yellow
+    'major'      → red
+    'failed'     → red (filled)
+- Ecosystem icons: 🐍 for pip/conda/venv, 🟢 for npm/node
+- Safe Mode indicator always visible in top header bar
+- All modals use shadcn Dialog component
+- Toast notifications (shadcn Toaster) for:
+    scan complete, update complete, snapshot created, errors
+- No raw terminal output ever shown to the user —
+  always translate to human-readable messages
+
+---
+
+## SETTINGS PAGE
+
+- Default scan paths (add/remove custom directories)
+- Safe Mode default (on/off)
+- Version cache duration (1h / 6h / 24h)
+- Concurrency limit for version checks (3 / 5 / 10)
+- Theme (dark/light)
+- Auto-snapshot before update (on/off toggle)
+- Export settings as JSON / Import settings
+
+---
+
+## ERROR HANDLING RULES
+
+- All child_process calls wrapped in try/catch
+- If pip not found: show setup guide modal
+  ("Python not detected. Install Python or set custom path in Settings.")
+- If npm not found: similar guide for Node.js
+- Network failure on version check: use cached version if available,
+  else show "Unable to check — offline?" badge
+- Permission errors on update: show
+  "Permission denied. Try running PackageGuard as administrator."
+- Never crash the app on package error —
+  mark that package as 'failed' and continue
+
+---
+
+## BUILD & PACKAGING
+
+In `electron-builder.config.js`:
+{
+  appId: "com.lupusventure.packageguard",
+  productName: "PackageGuard",
+  directories: { output: "dist" },
+  files: ["dist/**/*", "electron/**/*", "database/**/*"],
+  win: { target: "nsis", icon: "assets/icon.ico" },
+  mac: { target: "dmg", icon: "assets/icon.icns" },
+  linux: { target: "AppImage", icon: "assets/icon.png" }
+}
+
+---
+
+## DEVELOPMENT SEQUENCE
+
+Build in this exact order:
+
+1. Electron + Vite + React boilerplate with IPC bridge working
+2. pipHandler — detect packages, run pip list
+3. versionChecker — PyPI API calls + semver compare
+4. SQLite setup — schema + dbHandler CRUD
+5. Dashboard UI — PackageTable with mock data first, then live data
+6. GroupView — groupTags mapping + collapsible UI
+7. Safe Mode toggle + update mode logic
+8. Update execution + progress streaming via IPC
+9. Compatibility warning engine
+10. Snapshot create + restore
+11. npmHandler + nvm detection
+12. Environments page
+13. History page + CSV export
+14. Settings page
+15. Error handling passes
+16. electron-builder packaging for Win/Mac/Linux
+
+---
+
+Build this application completely. Start with Step 1 and proceed through 
+all steps. Ask for confirmation before starting each major phase if needed.
