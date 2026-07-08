@@ -3,40 +3,49 @@ export type PackageStatus = "up-to-date" | "patch" | "minor" | "major" | "failed
 export const statusConfig: Record<PackageStatus, { label: string; badgeClass: string; dotClass: string }> = {
   "up-to-date": {
     label: "Up to date",
-    badgeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-    dotClass: "bg-emerald-400",
+    badgeClass: "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0] rounded-[20px] font-semibold",
+    dotClass: "bg-[#10B981]",
   },
   patch: {
     label: "Patch",
-    badgeClass: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-    dotClass: "bg-blue-400",
+    badgeClass: "bg-[#EEF2FF] text-[#5B5EF4] border-[#C7D2FE] rounded-[20px] font-semibold",
+    dotClass: "bg-[#5B5EF4]",
   },
   minor: {
     label: "Minor",
-    badgeClass: "bg-amber-500/15 text-amber-400 border-amber-500/20",
-    dotClass: "bg-amber-400",
+    badgeClass: "bg-[#FFFBEB] text-[#D97706] border-[#FDE68A] rounded-[20px] font-semibold",
+    dotClass: "bg-[#F59E0B]",
   },
   major: {
     label: "Major",
-    badgeClass: "bg-red-500/15 text-red-400 border-red-500/20",
-    dotClass: "bg-red-400",
+    badgeClass: "bg-[#FFF7ED] text-[#EA580C] border-[#FFEDD5] rounded-[20px] font-semibold",
+    dotClass: "bg-[#F97316]",
   },
   failed: {
     label: "Failed",
-    badgeClass: "bg-red-600/25 text-red-300 border-red-600/30",
-    dotClass: "bg-red-500",
+    badgeClass: "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA] rounded-[20px] font-semibold",
+    dotClass: "bg-[#EF4444]",
   },
   unknown: {
     label: "Unknown",
-    badgeClass: "bg-muted text-muted-foreground border-border",
-    dotClass: "bg-muted-foreground",
+    badgeClass: "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0] rounded-[20px] font-semibold",
+    dotClass: "bg-[#CBD5E1]",
   },
 };
 
 export const historyStatusConfig: Record<string, { label: string; badgeClass: string }> = {
-  success: { label: "Success", badgeClass: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" },
-  failed: { label: "Failed", badgeClass: "bg-red-500/15 text-red-400 border-red-500/20" },
-  skipped: { label: "Skipped", badgeClass: "bg-muted text-muted-foreground border-border" },
+  success: { 
+    label: "Success", 
+    badgeClass: "bg-[#ECFDF5] text-[#059669] border-[#A7F3D0] rounded-[20px] font-semibold text-[0.75rem]" 
+  },
+  failed: { 
+    label: "Failed", 
+    badgeClass: "bg-[#FEF2F2] text-[#DC2626] border-[#FECACA] rounded-[20px] font-semibold text-[0.75rem]" 
+  },
+  skipped: { 
+    label: "Skipped", 
+    badgeClass: "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0] rounded-[20px] font-semibold text-[0.75rem]" 
+  },
 };
 
 export const ecosystemIcon: Record<string, string> = {

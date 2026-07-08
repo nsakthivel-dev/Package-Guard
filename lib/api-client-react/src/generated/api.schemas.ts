@@ -125,6 +125,8 @@ export interface Snapshot {
   environmentId: number;
   environmentName: string;
   name: string;
+  packageName?: string;
+  packageVersion?: string;
   packageCount: number;
   /** @nullable */
   notes?: string | null;
@@ -134,6 +136,8 @@ export interface Snapshot {
 export interface SnapshotInput {
   environmentId: number;
   name: string;
+  packageName?: string;
+  packageVersion?: string;
   notes?: string;
 }
 
@@ -213,6 +217,7 @@ export interface SettingsUpdate {
 export interface DashboardSummary {
   totalPackages: number;
   totalEnvironments: number;
+  totalVenvs: number;
   upToDate: number;
   needsUpdate: number;
   majorUpdates: number;

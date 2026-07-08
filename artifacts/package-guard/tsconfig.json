@@ -1,19 +1,20 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
   "compilerOptions": {
     "noEmit": true,
     "jsx": "preserve",
-    "lib": ["esnext", "dom", "dom.iterable"],
-    "resolveJsonModule": true,
-    "allowImportingTsExtensions": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "types": ["node", "vite/client"],
+    "customConditions": ["workspace", "@tanstack/custom-condition"],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
+  "include": ["src/**/*", "../../lib/api-client-react/src/electron.d.ts"],
+  "exclude": ["node_modules", "dist"],
   "references": [
     {
       "path": "../../lib/api-client-react"

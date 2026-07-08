@@ -9,7 +9,7 @@ const ThemeContext = createContext<{
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    return (localStorage.getItem("pg-theme") as Theme) || "dark";
+    return (localStorage.getItem("pg-theme") as Theme) || "light";
   });
 
   useEffect(() => {

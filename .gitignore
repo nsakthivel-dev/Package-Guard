@@ -7,6 +7,12 @@ out-tsc
 *.tsbuildinfo
 .expo
 .expo-shared
+release-latest
+release-build
+release
+out
+err.txt
+out.txt
 
 # dependencies
 node_modules
@@ -47,3 +53,9 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Build artifacts & releases
+release-v1/
+dist_electron/
+PackageGuard.zip
+database/

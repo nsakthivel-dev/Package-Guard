@@ -1,16 +1,46 @@
 {
   "name": "workspace",
   "version": "0.0.0",
+  "description": "A package management and security auditing tool for Electron applications.",
+  "author": "Lupus Venture",
   "license": "MIT",
+  "main": "electron/main.js",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "dev": "concurrently \"pnpm --filter @workspace/package-guard dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "start": "pnpm run build:frontend && electron .",
+    "build": "pnpm run build:frontend && pnpm run build:electron",
+    "build:frontend": "pnpm --filter @workspace/package-guard build",
+    "build:electron": "electron-builder --config electron-builder.config.js",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"@workspace/package-guard\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
+  "dependencies": {
+    "axios": "^1.16.0",
+    "electron-is-dev": "^3.0.1",
+    "semver": "^7.8.0"
+  },
   "devDependencies": {
+    "@esbuild/win32-x64": "^0.27.3",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-query": "5.90.21",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "catalog:",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "date-fns": "^3.6.0",
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1",
+    "electron-packager": "^17.1.2",
+    "framer-motion": "catalog:",
+    "lucide-react": "catalog:",
+    "prettier": "^3.8.1",
+    "recharts": "^2.15.4",
+    "tailwind-merge": "catalog:",
     "typescript": "~5.9.2",
-    "prettier": "^3.8.1"
+    "wait-on": "^9.0.10",
+    "wouter": "catalog:",
+    "zod": "catalog:",
+    "zustand": "^5.0.13"
   }
 }
