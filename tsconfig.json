@@ -3,11 +3,7 @@
   "compileOnSave": false,
   "files": [],
   "references": [
-    {
-      "path": "./lib/api-client-react"
-    },
-    {
-      "path": "./artifacts/package-guard"
-    }
+    { "path": "./packages/api-client" },
+    { "path": "./frontend" }
   ]
 }

@@ -17,6 +17,12 @@ out.txt
 # dependencies
 node_modules
 
+# environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
 # IDEs and editors
 /.idea
 .project
@@ -59,3 +65,17 @@ release-v1/
 dist_electron/
 PackageGuard.zip
 database/
+
+# Generated build outputs (recreated by pnpm build:*)
+frontend/dist/
+packages/api-client/dist/
+
+# Runtime log files (generated when the app runs)
+electron-stdout.txt
+electron-stderr.txt
+
+# AI design tool artifacts
+.kombai/
+
+# Scratch / planning documents (root-level only)
+/*.docx

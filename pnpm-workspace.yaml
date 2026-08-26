@@ -5,9 +5,12 @@ minimumReleaseAgeExclude:
   - stripe-replit-sync
 
 packages:
-  - artifacts/package-guard
-  - lib/api-client-react
-  - scripts
+  - frontend
+  - packages/api-client
+  - packages/shared-paths
+  - packages/cli
+  - tools/scripts
+  - backend/core
 
 onlyBuiltDependencies:
   - esbuild
@@ -41,11 +44,13 @@ catalog:
   '@vitejs/plugin-react': ^5.0.4
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
+  date-fns: ^3.6.0
   drizzle-orm: ^0.45.2
   framer-motion: ^12.35.1
   lucide-react: ^0.545.0
   react: 19.1.0
   react-dom: 19.1.0
+  semver: ^7.8.0
   tailwind-merge: ^3.5.0
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
