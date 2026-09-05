@@ -20,10 +20,15 @@ rmdir /s /q "%TMP%" 2>nul
 mkdir "%TMP%\extracted"
 
 node "%ASAR_JS%" extract "%ASAR%" "%TMP%\extracted"
-copy /Y "%ROOT%\electron\main.js" "%TMP%\extracted\electron\main.js"
-copy /Y "%ROOT%\electron\paths.js" "%TMP%\extracted\electron\paths.js"
+copy /Y "%ROOT%\apps\desktop\main\main.js" "%TMP%\extracted\apps\desktop\main\main.js"
+copy /Y "%ROOT%\apps\desktop\main\paths.js" "%TMP%\extracted\apps\desktop\main\paths.js"
+copy /Y "%ROOT%\apps\desktop\main\handlers\projectEnvironmentHandler.js" "%TMP%\extracted\apps\desktop\main\handlers\projectEnvironmentHandler.js"
 
 del /f "%ASAR%" 2>nul
 node "%ASAR_JS%" pack "%TMP%\extracted" "%ASAR%"
+
+if exist "C:\Program Files\Package Guard\PackageGuard\resources\app.asar" (
+  copy /Y "%ASAR%" "C:\Program Files\Package Guard\PackageGuard\resources\app.asar" >nul 2>&1
+)
 
 echo Done. Run: release\win-unpacked\PackageGuard.exe

@@ -1,0 +1,61 @@
+{
+  "name": "@packageguard/core",
+  "version": "2.5.0",
+  "description": "PackageGuard core business logic engine — scanner, snapshots, diff, restore, project management",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./scanner": {
+      "types": "./dist/scanner/index.d.ts",
+      "default": "./dist/scanner/index.js"
+    },
+    "./package-manager": {
+      "types": "./dist/package-manager/index.d.ts",
+      "default": "./dist/package-manager/index.js"
+    },
+    "./snapshot": {
+      "types": "./dist/snapshot/index.d.ts",
+      "default": "./dist/snapshot/index.js"
+    },
+    "./restore": {
+      "types": "./dist/restore/index.d.ts",
+      "default": "./dist/restore/index.js"
+    },
+    "./diff": {
+      "types": "./dist/diff/index.d.ts",
+      "default": "./dist/diff/index.js"
+    },
+    "./services": {
+      "types": "./dist/services/index.d.ts",
+      "default": "./dist/services/index.js"
+    },
+    "./paths": {
+      "types": "./dist/paths.d.ts",
+      "default": "./dist/paths.js"
+    }
+  },
+  "dependencies": {
+    "@packageguard/shared": "workspace:*",
+    "@packageguard/database": "workspace:*",
+    "date-fns": "catalog:",
+    "semver": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/semver": "^7.7.1",
+    "typescript": "~5.9.2"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"const fs=require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist',{recursive:true})\""
+  }
+}

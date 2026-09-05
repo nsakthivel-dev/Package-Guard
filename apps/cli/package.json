@@ -1,0 +1,24 @@
+{
+  "name": "@packageguard/cli",
+  "version": "1.0.0",
+  "description": "PackageGuard CLI — pg command",
+  "private": true,
+  "main": "dist/cli.js",
+  "bin": {
+    "pg": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"const fs=require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist',{recursive:true})\"",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@packageguard/shared": "workspace:*",
+    "better-sqlite3": "^11.7.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "catalog:",
+    "typescript": "~5.9.2"
+  }
+}

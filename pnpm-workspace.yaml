@@ -5,14 +5,16 @@ minimumReleaseAgeExclude:
   - stripe-replit-sync
 
 packages:
-  - frontend
-  - packages/api-client
-  - packages/shared-paths
-  - packages/cli
-  - tools/scripts
-  - backend/core
+  - apps/desktop
+  - apps/desktop/renderer
+  - apps/cli
+  - packages/core
+  - packages/database
+  - packages/shared
+  - lib/api-client-react
 
 onlyBuiltDependencies:
+  - better-sqlite3
   - esbuild
   - electron
   - 7zip-bin
@@ -59,5 +61,7 @@ catalog:
   zod: ^3.25.76
 
 allowBuilds:
+  better-sqlite3: true
+  electron: true
   electron-winstaller: true
   esbuild: true

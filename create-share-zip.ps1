@@ -47,14 +47,17 @@ $excludeWildcards = @(
 
 # Specific sub-paths to exclude (relative to project root)
 $excludeSubPaths = @(
-    "artifacts\package-guard\dist",
-    "packages\cli\dist",
+    "apps\cli\dist",
+    "apps\desktop\renderer\dist",
+    "packages\shared\dist",
+    "packages\database\dist",
+    "packages\core\dist",
     "lib\api-client-react\dist"
 )
 
 Write-Host ""
-Write-Host "  Project Guardian - Share Zip Creator" -ForegroundColor Cyan
-Write-Host "  --------------------------------------" -ForegroundColor DarkGray
+Write-Host "  Package Guard - Share Zip Creator" -ForegroundColor Cyan
+Write-Host "  -----------------------------------" -ForegroundColor DarkGray
 Write-Host "  Source : $projectRoot" -ForegroundColor Gray
 Write-Host "  Output : $outputZip" -ForegroundColor Gray
 Write-Host ""

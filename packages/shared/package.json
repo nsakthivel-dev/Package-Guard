@@ -1,0 +1,72 @@
+{
+  "name": "@packageguard/shared",
+  "version": "1.0.0",
+  "description": "Shared types, constants, paths and utilities for PackageGuard — used by both CLI and Electron",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "import": "./dist/db.js",
+      "require": "./dist/db.js",
+      "default": "./dist/db.js"
+    },
+    "./repository": {
+      "types": "./dist/repository.d.ts",
+      "import": "./dist/repository.js",
+      "require": "./dist/repository.js",
+      "default": "./dist/repository.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js",
+      "require": "./dist/protocol.js",
+      "default": "./dist/protocol.js"
+    },
+    "./paths": {
+      "types": "./dist/paths.d.ts",
+      "import": "./dist/paths.js",
+      "require": "./dist/paths.js",
+      "default": "./dist/paths.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "require": "./dist/types.js",
+      "default": "./dist/types.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "import": "./dist/version.js",
+      "require": "./dist/version.js",
+      "default": "./dist/version.js"
+    },
+    "./constants": {
+      "types": "./dist/constants/index.d.ts",
+      "default": "./dist/constants/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "default": "./dist/utils/index.js"
+    }
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "catalog:",
+    "typescript": "~5.9.2"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"const fs=require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist',{recursive:true})\""
+  }
+}

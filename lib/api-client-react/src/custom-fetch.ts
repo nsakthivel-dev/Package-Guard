@@ -169,14 +169,39 @@ export async function customFetch<T = unknown>(
       if (method === "PATCH" || method === "POST") return await api.updateSettings(body) as any;
     }
 
-    // Snapshots
+    // Snapshots — fetch unified snapshots from SQLite / Electron
     if (url === "/api/snapshots") {
-      if (method === "GET") return await api.getSnapshots() as any;
+      if (method === "GET") {
+        try {
+          const snaps = await api.getSnapshots();
+          if (Array.isArray(snaps)) {
+            return snaps.map((s: any) => ({
+              ...s,
+              id: s.id,
+              environmentId: s.environmentId ?? s.project_id,
+              environmentName: s.environmentName ?? "Unknown",
+              name: s.name,
+              packageCount: s.packageCount ?? s.package_count ?? (s.packages?.length ?? 0),
+              notes: s.notes ?? s.description ?? null,
+              createdAt: s.createdAt
+                ? (typeof s.createdAt === "number"
+                    ? new Date(s.createdAt).toISOString()
+                    : String(s.createdAt))
+                : (s.created_at ? String(s.created_at) : new Date().toISOString()),
+              status: s.status ?? "verified",
+              packages: s.packages || [],
+            })) as any;
+          }
+        } catch (e) {
+          console.error("Failed to get snapshots:", e);
+        }
+        return [] as any;
+      }
       if (method === "POST") return await api.createSnapshot(body) as any;
     }
     if (url.startsWith("/api/snapshots/")) {
       const parts = url.split("/");
-      const id = parseInt(parts[3]);
+      const id = parts[3];
       if (parts[4] === "restore") return await api.restoreSnapshot(id) as any;
       if (method === "DELETE") return await api.deleteSnapshot(id) as any;
     }

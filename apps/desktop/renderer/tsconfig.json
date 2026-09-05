@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "preserve",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "types": ["node", "vite/client"],
+    "customConditions": ["workspace", "@tanstack/custom-condition"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "../../../lib/api-client-react/src/electron.d.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

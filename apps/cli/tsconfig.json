@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "rootDir": "src",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": true,
+    "types": ["node"],
+    "paths": {
+      "@package-guard/shared":            ["../../packages/shared/dist/protocol"],
+      "@package-guard/shared/db":         ["../../packages/shared/dist/db"],
+      "@package-guard/shared/repository": ["../../packages/shared/dist/repository"],
+      "@package-guard/shared/paths":      ["../../packages/shared/dist/paths"],
+      "@package-guard/shared/types":      ["../../packages/shared/dist/types"],
+      "@package-guard/shared/version":    ["../../packages/shared/dist/version"],
+      "@packageguard/shared":            ["../../packages/shared/dist/protocol"],
+      "@packageguard/shared/db":         ["../../packages/shared/dist/db"],
+      "@packageguard/shared/repository": ["../../packages/shared/dist/repository"],
+      "@packageguard/shared/paths":      ["../../packages/shared/dist/paths"],
+      "@packageguard/shared/types":      ["../../packages/shared/dist/types"],
+      "@packageguard/shared/version":    ["../../packages/shared/dist/version"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -3,7 +3,10 @@
   "compileOnSave": false,
   "files": [],
   "references": [
-    { "path": "./packages/api-client" },
-    { "path": "./frontend" }
+    { "path": "./packages/shared" },
+    { "path": "./packages/database" },
+    { "path": "./packages/core" },
+    { "path": "./apps/cli" },
+    { "path": "./apps/desktop/renderer" }
   ]
 }

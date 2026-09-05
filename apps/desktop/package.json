@@ -1,0 +1,13 @@
+{
+  "name": "@packageguard/desktop",
+  "version": "1.0.0",
+  "description": "PackageGuard Desktop Electron application — main + preload + renderer",
+  "private": true,
+  "dependencies": {
+    "@packageguard/core": "workspace:*",
+    "@packageguard/database": "workspace:*",
+    "@packageguard/shared": "workspace:*",
+    "@packageguard/api-client-react": "workspace:*",
+    "tsx": "catalog:"
+  }
+}

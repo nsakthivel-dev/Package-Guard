@@ -65,6 +65,7 @@ release-v1/
 dist_electron/
 PackageGuard.zip
 database/
+prod-modules/
 
 # Generated build outputs (recreated by pnpm build:*)
 frontend/dist/
@@ -79,3 +80,6 @@ electron-stderr.txt
 
 # Scratch / planning documents (root-level only)
 /*.docx
+
+# PackageGuard local project data
+.packageguard/

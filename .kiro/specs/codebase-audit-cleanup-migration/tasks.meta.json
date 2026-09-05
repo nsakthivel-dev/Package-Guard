@@ -1,0 +1,163 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test": {
+      "status": "passed",
+      "failingExample": "`packages/api-client` (name=`@packageguard/api-client-react`) and `lib/api-client-react` (name=`@packageguard/api-client-react`) are both listed in `pnpm-workspace.yaml`. pnpm ls --depth 0 reports the name twice and resolves `@packageguard/desktop`'s workspace:* dependency to `packages/api-client` (the duplicate), not `lib/api-client-react` (the canonical). isBugCondition(workspace) === true.",
+      "lastRunTimestamp": 1788325366437
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325228428
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788325276313
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788325378507
+      }
+    ],
+    "2. Write preservation baseline checks (BEFORE implementing fix)": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325228800
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788325383519
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788326902147
+      }
+    ],
+    "3.1 Remove `packages/api-client` from `pnpm-workspace.yaml`": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325229096
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788326907510
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788326941016
+      }
+    ],
+    "3.2 Delete the `packages/api-client` directory": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325229331
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788326945283
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788328204388
+      }
+    ],
+    "3.3 Run `pnpm install` to regenerate the lock file": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325229611
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788328211019
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788328966346
+      }
+    ],
+    "3.4 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325229857
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788328970723
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788329172815
+      }
+    ],
+    "3.5 Verify preservation baseline checks still pass": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325230078
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788329181270
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788330226162
+      }
+    ],
+    "4.1 Electron start and renderer load check": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325230383
+      },
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788330231887
+      }
+    ],
+    "4.2 Produce the final migration report": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325230594
+      }
+    ],
+    "5. Checkpoint — Ensure all checks pass": [
+      {
+        "executionId": "ee4087d4-1734-4b2d-8a71-74910e044a33",
+        "chatSessionId": "sess_83c8a1fb-c7a6-4700-b307-76c249be3569",
+        "timestamp": 1788325230953
+      }
+    ],
+    "3. Fix duplicate workspace package entry": [
+      {
+        "executionId": "549e3c29-74e1-4251-bb5c-761412a9cd1d",
+        "chatSessionId": "sess_73973972-f625-4b19-80e7-83e70cfa0edb",
+        "timestamp": 1788330226375
+      }
+    ]
+  }
+}

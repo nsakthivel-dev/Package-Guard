@@ -155,6 +155,7 @@ export const HistoryEntryEcosystem = {
   conda: "conda",
   venv: "venv",
   nvm: "nvm",
+  cli: "cli",
 } as const;
 
 export type HistoryEntryStatus =
@@ -164,6 +165,8 @@ export const HistoryEntryStatus = {
   success: "success",
   failed: "failed",
   skipped: "skipped",
+  LIVE: "LIVE",
+  SYNCED: "SYNCED",
 } as const;
 
 export interface HistoryEntry {
