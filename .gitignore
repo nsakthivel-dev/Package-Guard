@@ -64,8 +64,9 @@ Thumbs.db
 release-v1/
 dist_electron/
 PackageGuard.zip
-database/
+/database/
 prod-modules/
+dist-cli/
 
 # Generated build outputs (recreated by pnpm build:*)
 frontend/dist/

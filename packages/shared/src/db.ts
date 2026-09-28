@@ -142,17 +142,74 @@ function applyMigrations(db: BetterSqlite3.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_snapshot_files_snapshot_id
       ON snapshot_files (snapshot_id);
+
+    CREATE TABLE IF NOT EXISTS history (
+      id           TEXT    NOT NULL PRIMARY KEY,
+      project_id   TEXT,
+      event_type   TEXT    NOT NULL,
+      description  TEXT    NOT NULL,
+      details_json TEXT,
+      created_at   TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_history_project_id
+      ON history (project_id);
+
+    CREATE INDEX IF NOT EXISTS idx_history_created_at
+      ON history (created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_history_event_type
+      ON history (event_type);
+
+    CREATE TABLE IF NOT EXISTS config (
+      key        TEXT NOT NULL PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS backups (
+      id          TEXT    NOT NULL PRIMARY KEY,
+      backup_path TEXT    NOT NULL,
+      size_bytes  INTEGER NOT NULL DEFAULT 0,
+      description TEXT,
+      created_at  TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_backups_created_at
+      ON backups (created_at);
+
+    CREATE TABLE IF NOT EXISTS security_advisories (
+      id                  TEXT NOT NULL PRIMARY KEY,
+      package_name        TEXT NOT NULL,
+      severity            TEXT NOT NULL,
+      title               TEXT,
+      vulnerable_versions TEXT,
+      fixed_in            TEXT,
+      url                 TEXT,
+      created_at          TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_security_advisories_pkg
+      ON security_advisories (package_name);
   `);
 
   // Safe migration for existing databases: ensure delivery_type column exists
-  const cols = db.prepare("PRAGMA table_info(events)").all() as { name: string }[];
-  const hasDeliveryType = cols.some((c) => c.name === "delivery_type");
+  const eventCols = db.prepare("PRAGMA table_info(events)").all() as { name: string }[];
+  const hasDeliveryType = eventCols.some((c) => c.name === "delivery_type");
   if (!hasDeliveryType) {
     db.exec("ALTER TABLE events ADD COLUMN delivery_type TEXT;");
   }
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_events_delivery_type ON events (delivery_type);");
-
-  // Classify existing unclassified records as SYNCED without inventing history
   db.exec("UPDATE events SET delivery_type = 'SYNCED' WHERE delivery_type IS NULL;");
+
+  // Safe migrations for projects table: package_manager and active_snapshot_id
+  const projectCols = db.prepare("PRAGMA table_info(projects)").all() as { name: string }[];
+  if (!projectCols.some((c) => c.name === "package_manager")) {
+    db.exec("ALTER TABLE projects ADD COLUMN package_manager TEXT;");
+  }
+  if (!projectCols.some((c) => c.name === "active_snapshot_id")) {
+    db.exec("ALTER TABLE projects ADD COLUMN active_snapshot_id TEXT;");
+  }
 }
+

@@ -364,3 +364,300 @@ export function getSnapshotFiles(
   `);
   return stmt.all(snapshotId) as SnapshotFile[];
 }
+
+// ---------------------------------------------------------------------------
+// Extended Project Operations
+// ---------------------------------------------------------------------------
+
+export function renameProject(
+  db: BetterSqlite3.Database,
+  id: string,
+  newName: string
+): boolean {
+  const stmt = db.prepare(`UPDATE projects SET name = ? WHERE id = ?`);
+  const res = stmt.run(newName, id);
+  return res.changes > 0;
+}
+
+export function deleteProjectTracking(
+  db: BetterSqlite3.Database,
+  id: string
+): boolean {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM snapshot_files WHERE snapshot_id IN (SELECT id FROM snapshots WHERE project_id = ?)`).run(id);
+    db.prepare(`DELETE FROM snapshots WHERE project_id = ?`).run(id);
+    db.prepare(`DELETE FROM scans WHERE project_id = ?`).run(id);
+    db.prepare(`DELETE FROM history WHERE project_id = ?`).run(id);
+    const res = db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+    return res.changes > 0;
+  });
+  return tx();
+}
+
+export function setProjectActiveSnapshot(
+  db: BetterSqlite3.Database,
+  projectId: string,
+  snapshotId: string | null
+): void {
+  const stmt = db.prepare(`UPDATE projects SET active_snapshot_id = ? WHERE id = ?`);
+  stmt.run(snapshotId, projectId);
+}
+
+export function setProjectPackageManager(
+  db: BetterSqlite3.Database,
+  projectId: string,
+  packageManager: string
+): void {
+  const stmt = db.prepare(`UPDATE projects SET package_manager = ? WHERE id = ?`);
+  stmt.run(packageManager, projectId);
+}
+
+// ---------------------------------------------------------------------------
+// History Operations (Public User-Facing Activity)
+// ---------------------------------------------------------------------------
+
+export function insertHistory(
+  db: BetterSqlite3.Database,
+  item: {
+    id?: string;
+    projectId?: string | null;
+    eventType: string;
+    description: string;
+    detailsJson?: string | null;
+  }
+): void {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const crypto = require("node:crypto");
+  const id = item.id || `hist-${crypto.randomUUID().slice(0, 8)}`;
+  const stmt = db.prepare(`
+    INSERT INTO history (id, project_id, event_type, description, details_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    id,
+    item.projectId ?? null,
+    item.eventType,
+    item.description,
+    item.detailsJson ?? null,
+    new Date().toISOString()
+  );
+}
+
+export function listHistory(
+  db: BetterSqlite3.Database,
+  opts: {
+    projectId?: string | null;
+    todayOnly?: boolean;
+    limit?: number;
+  } = {}
+): Array<{ id: string; project_id: string | null; event_type: string; description: string; details_json: string | null; created_at: string }> {
+  let sql = `SELECT * FROM history WHERE 1=1`;
+  const params: any[] = [];
+
+  if (opts.projectId) {
+    sql += ` AND project_id = ?`;
+    params.push(opts.projectId);
+  }
+
+  if (opts.todayOnly) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    sql += ` AND created_at >= ?`;
+    params.push(startOfDay.toISOString());
+  }
+
+  sql += ` ORDER BY created_at DESC LIMIT ?`;
+  params.push(opts.limit ?? 100);
+
+  const stmt = db.prepare(sql);
+  return stmt.all(...params) as any[];
+}
+
+export function clearHistory(
+  db: BetterSqlite3.Database,
+  projectId?: string | null
+): number {
+  if (projectId) {
+    const stmt = db.prepare(`DELETE FROM history WHERE project_id = ?`);
+    return stmt.run(projectId).changes;
+  } else {
+    const stmt = db.prepare(`DELETE FROM history`);
+    return stmt.run().changes;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Config Operations
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_CONFIG_ENTRIES: Record<string, string> = {
+  autoScan: "true",
+  notifyElectron: "true",
+  safeMode: "true",
+  cacheDurationHours: "6",
+  concurrencyLimit: "5",
+  logLevel: "info",
+  telemetry: "false"
+};
+
+export function getConfig(
+  db: BetterSqlite3.Database,
+  key: string,
+  defaultValue?: string
+): string | undefined {
+  const stmt = db.prepare(`SELECT value FROM config WHERE key = ?`);
+  const row = stmt.get(key) as { value: string } | undefined;
+  if (row) return row.value;
+  return defaultValue ?? DEFAULT_CONFIG_ENTRIES[key];
+}
+
+export function setConfig(
+  db: BetterSqlite3.Database,
+  key: string,
+  value: string
+): void {
+  const stmt = db.prepare(`
+    INSERT INTO config (key, value, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `);
+  stmt.run(key, value, new Date().toISOString());
+}
+
+export function resetConfig(db: BetterSqlite3.Database): void {
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM config`).run();
+    const insert = db.prepare(`INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)`);
+    const now = new Date().toISOString();
+    for (const [k, v] of Object.entries(DEFAULT_CONFIG_ENTRIES)) {
+      insert.run(k, v, now);
+    }
+  });
+  tx();
+}
+
+export function listConfig(
+  db: BetterSqlite3.Database
+): Record<string, string> {
+  const stmt = db.prepare(`SELECT key, value FROM config`);
+  const rows = stmt.all() as Array<{ key: string; value: string }>;
+  const result: Record<string, string> = { ...DEFAULT_CONFIG_ENTRIES };
+  for (const r of rows) {
+    result[r.key] = r.value;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Backup Operations
+// ---------------------------------------------------------------------------
+
+export function insertBackup(
+  db: BetterSqlite3.Database,
+  backup: {
+    id: string;
+    backupPath: string;
+    sizeBytes: number;
+    description?: string | null;
+  }
+): void {
+  const stmt = db.prepare(`
+    INSERT INTO backups (id, backup_path, size_bytes, description, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    backup.id,
+    backup.backupPath,
+    backup.sizeBytes,
+    backup.description ?? null,
+    new Date().toISOString()
+  );
+}
+
+export function listBackups(
+  db: BetterSqlite3.Database
+): Array<{ id: string; backup_path: string; size_bytes: number; description: string | null; created_at: string }> {
+  const stmt = db.prepare(`SELECT * FROM backups ORDER BY created_at DESC`);
+  return stmt.all() as any[];
+}
+
+export function getBackupById(
+  db: BetterSqlite3.Database,
+  id: string
+): { id: string; backup_path: string; size_bytes: number; description: string | null; created_at: string } | undefined {
+  const stmt = db.prepare(`SELECT * FROM backups WHERE id = ?`);
+  return stmt.get(id) as any;
+}
+
+export function deleteBackup(
+  db: BetterSqlite3.Database,
+  id: string
+): boolean {
+  const stmt = db.prepare(`DELETE FROM backups WHERE id = ?`);
+  return stmt.run(id).changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Security Advisories Operations
+// ---------------------------------------------------------------------------
+
+export function insertSecurityAdvisory(
+  db: BetterSqlite3.Database,
+  advisory: {
+    id: string;
+    packageName: string;
+    severity: string;
+    title?: string;
+    vulnerableVersions?: string;
+    fixedIn?: string;
+    url?: string;
+  }
+): void {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO security_advisories (id, package_name, severity, title, vulnerable_versions, fixed_in, url, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    advisory.id,
+    advisory.packageName,
+    advisory.severity,
+    advisory.title ?? null,
+    advisory.vulnerableVersions ?? null,
+    advisory.fixedIn ?? null,
+    advisory.url ?? null,
+    new Date().toISOString()
+  );
+}
+
+export function listSecurityAdvisories(
+  db: BetterSqlite3.Database,
+  packageName?: string
+): Array<{ id: string; package_name: string; severity: string; title: string | null; vulnerable_versions: string | null; fixed_in: string | null; url: string | null; created_at: string }> {
+  if (packageName) {
+    const stmt = db.prepare(`SELECT * FROM security_advisories WHERE LOWER(package_name) = LOWER(?) ORDER BY created_at DESC`);
+    return stmt.all(packageName) as any[];
+  }
+  const stmt = db.prepare(`SELECT * FROM security_advisories ORDER BY created_at DESC`);
+  return stmt.all() as any[];
+}
+
+export function clearSecurityAdvisories(db: BetterSqlite3.Database): void {
+  db.prepare(`DELETE FROM security_advisories`).run();
+}
+
+// ---------------------------------------------------------------------------
+// Queue Operations
+// ---------------------------------------------------------------------------
+
+export function listQueue(
+  db: BetterSqlite3.Database,
+  status?: string
+): CommunicationEvent[] {
+  if (status) {
+    const stmt = db.prepare(`SELECT * FROM events WHERE status = ? ORDER BY created_at ASC, rowid ASC`);
+    return stmt.all(status) as CommunicationEvent[];
+  }
+  const stmt = db.prepare(`SELECT * FROM events ORDER BY created_at ASC, rowid ASC`);
+  return stmt.all() as CommunicationEvent[];
+}
+

@@ -1,5 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
-import { initializeProject, isInitialized } from "../services/project-service";
+import { initializeProject } from "../services/project-service";
+import { scanProject } from "../services/scanner-service";
+import { insertScan, insertHistory } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
 export async function executeInit(
@@ -15,21 +17,61 @@ export async function executeInit(
     console.log("Package Guard is already initialized for this project.\n");
     console.log(`Project: ${result.project.name}`);
     console.log(`Path: ${result.project.path}`);
+    console.log(`Package Manager: ${result.packageManager || "npm"}`);
     console.log(`Status: READY`);
     return 0;
   }
+
+  // Perform initial scan
+  let scanRes = null;
+  try {
+    scanRes = await scanProject(db, result.project.id, result.project.path, result.project.name);
+    insertScan(db, {
+      id: scanRes.id,
+      projectId: result.project.id,
+      filesScanned: scanRes.filesScanned,
+      packagesDetected: scanRes.packagesDetected,
+      changesDetected: scanRes.changesDetected,
+      durationMs: scanRes.durationMs,
+      status: scanRes.status,
+      resultJson: JSON.stringify(scanRes)
+    });
+  } catch {
+    // initial scan fallback
+  }
+
+  insertHistory(db, {
+    projectId: result.project.id,
+    eventType: "INIT",
+    description: `Project initialized: ${result.project.name} (${result.packageManager})`,
+    detailsJson: JSON.stringify({
+      path: result.project.path,
+      packageManager: result.packageManager,
+      initialPackages: scanRes?.packagesDetected ?? 0
+    })
+  });
 
   await sendCliEvent("init", {
     projectId: result.project.id,
     projectName: result.project.name,
     projectPath: result.project.path,
+    packageManager: result.packageManager,
+    initialScan: scanRes ? {
+      filesScanned: scanRes.filesScanned,
+      packagesDetected: scanRes.packagesDetected
+    } : null,
     status: "READY"
   }, result.project.id);
 
   console.log("Package Guard initialized\n");
   console.log(`Project: ${result.project.name}`);
   console.log(`Path: ${result.project.path}`);
+  console.log(`Package Manager: ${result.packageManager}`);
+  if (scanRes) {
+    console.log(`Packages Detected: ${scanRes.packagesDetected}`);
+  }
   console.log(`Status: READY`);
 
   return 0;
 }
+

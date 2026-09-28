@@ -207,3 +207,148 @@ export function deleteSnapshot(
 
   return deleteSnapshotById(db, snapshotId);
 }
+
+export interface ExportedSnapshotData {
+  version: 1;
+  exportedAt: string;
+  snapshot: Snapshot;
+  manifest?: SnapshotManifest;
+  files: Array<{
+    relativePath: string;
+    fileHash: string;
+    sizeBytes: number;
+    contentBase64: string;
+  }>;
+}
+
+export function exportSnapshot(
+  db: BetterSqlite3.Database,
+  snapshotId: string,
+  outputPath?: string
+): string {
+  const { snapshot, files, manifest } = getSnapshot(db, snapshotId);
+  if (!snapshot) {
+    throw new Error(`Snapshot '${snapshotId}' not found.`);
+  }
+
+  const storageRoot = getSnapshotStorageDir();
+  const snapshotDir = path.join(storageRoot, snapshotId);
+
+  const exportedFiles: ExportedSnapshotData["files"] = [];
+  for (const f of files) {
+    const filePath = f.storage_path && fs.existsSync(f.storage_path)
+      ? f.storage_path
+      : path.join(snapshotDir, f.relative_path);
+
+    if (fs.existsSync(filePath)) {
+      const buffer = fs.readFileSync(filePath);
+      exportedFiles.push({
+        relativePath: f.relative_path,
+        fileHash: f.file_hash,
+        sizeBytes: f.size_bytes,
+        contentBase64: buffer.toString("base64")
+      });
+    }
+  }
+
+  const exportData: ExportedSnapshotData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    snapshot,
+    manifest,
+    files: exportedFiles
+  };
+
+  const finalOutPath = outputPath || path.join(process.cwd(), `snapshot-${snapshotId}-export.json`);
+  fs.writeFileSync(finalOutPath, JSON.stringify(exportData, null, 2), "utf8");
+  return finalOutPath;
+}
+
+export function importSnapshot(
+  db: BetterSqlite3.Database,
+  targetProjectId: string,
+  filePath: string
+): Snapshot {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
+  let data: any;
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    data = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Invalid JSON in snapshot file: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (!data || typeof data !== "object" || !data.snapshot || !Array.isArray(data.files)) {
+    throw new Error("Invalid snapshot export format. Expected snapshot and files array.");
+  }
+
+  const origSnap = data.snapshot as Snapshot;
+  const newSnapshotId = generateNextSnapshotId(db, targetProjectId);
+  const storageRoot = getSnapshotStorageDir();
+  const snapshotDir = path.join(storageRoot, newSnapshotId);
+  fs.mkdirSync(snapshotDir, { recursive: true });
+
+  const snapshotFilesToInsert: Array<{
+    id: string;
+    snapshotId: string;
+    relativePath: string;
+    fileHash: string;
+    sizeBytes: number;
+    storagePath: string;
+  }> = [];
+
+  for (const f of data.files) {
+    const targetFile = path.join(snapshotDir, f.relativePath);
+    fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+    const buffer = Buffer.from(f.contentBase64, "base64");
+    fs.writeFileSync(targetFile, buffer);
+
+    const fileId = `sf-${crypto.randomUUID().slice(0, 8)}`;
+    snapshotFilesToInsert.push({
+      id: fileId,
+      snapshotId: newSnapshotId,
+      relativePath: f.relativePath,
+      fileHash: f.fileHash || calculateFileHash(targetFile),
+      sizeBytes: f.sizeBytes || buffer.length,
+      storagePath: targetFile
+    });
+  }
+
+  const newSnap: Snapshot = {
+    id: newSnapshotId,
+    project_id: targetProjectId,
+    name: origSnap.name ? `Imported: ${origSnap.name}` : `Imported Snapshot ${newSnapshotId}`,
+    description: origSnap.description || "Imported from snapshot export",
+    file_count: snapshotFilesToInsert.length,
+    package_count: origSnap.package_count || 0,
+    manifest_json: origSnap.manifest_json || JSON.stringify(data.manifest || {}),
+    status: "ACTIVE",
+    created_at: new Date().toISOString()
+  };
+
+  insertSnapshot(db, {
+    id: newSnap.id,
+    projectId: newSnap.project_id,
+    name: newSnap.name,
+    description: newSnap.description || undefined,
+    fileCount: newSnap.file_count,
+    packageCount: newSnap.package_count,
+    manifestJson: newSnap.manifest_json
+  });
+
+  insertSnapshotFiles(db, snapshotFilesToInsert);
+
+  return newSnap;
+}
+
+export function getLatestSafetySnapshot(
+  db: BetterSqlite3.Database,
+  projectId: string
+): Snapshot | undefined {
+  const snaps = listSnapshotsForProject(db, projectId);
+  return snaps.find((s) => s.name.toLowerCase().includes("safety") || s.name.toLowerCase().includes("snapshot"));
+}
+

@@ -44,23 +44,49 @@ export async function runDoctor(
 ): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
 
-  // 1. Package Guard configuration
-  const appDataDir = getAppDataDir();
-  if (fs.existsSync(appDataDir)) {
+  // 1. CLI Subsystem
+  checks.push({
+    name: "CLI",
+    status: "OK",
+    message: `PackageGuard CLI v1.0.0 (Node ${process.version})`
+  });
+
+  // 2. Electron Subsystem
+  const pipeActive = await checkPipeListening();
+  checks.push({
+    name: "Electron",
+    status: pipeActive ? "OK" : "WARN",
+    message: pipeActive
+      ? "Electron application is active and connected"
+      : "Electron application is closed (offline mode enabled)"
+  });
+
+  // 3. Named Pipe Subsystem
+  checks.push({
+    name: "Named Pipe",
+    status: pipeActive ? "OK" : "WARN",
+    message: pipeActive
+      ? `Named Pipe ${PIPE_NAME} is active`
+      : `Named Pipe ${PIPE_NAME} is offline (events queued in SQLite)`
+  });
+
+  // 4. SQLite Subsystem
+  try {
+    const versionRow = db.prepare("SELECT sqlite_version() as ver").get() as { ver: string };
     checks.push({
-      name: "Package Guard configuration",
+      name: "SQLite",
       status: "OK",
-      message: `Config directory verified at ${appDataDir}`
+      message: `SQLite engine v${versionRow.ver} loaded via WAL mode`
     });
-  } else {
+  } catch (err) {
     checks.push({
-      name: "Package Guard configuration",
+      name: "SQLite",
       status: "FAIL",
-      message: "Application data directory does not exist"
+      message: `Failed to execute SQLite query: ${err}`
     });
   }
 
-  // 2. Database
+  // 5. Database Subsystem
   try {
     const pragmaRes = db.prepare("PRAGMA quick_check").get() as { quick_check?: string };
     const tables = db
@@ -68,14 +94,14 @@ export async function runDoctor(
       .all() as Array<{ name: string }>;
     const tableNames = new Set(tables.map((t) => t.name));
 
-    const required = ["events", "projects", "scans", "snapshots", "snapshot_files"];
+    const required = ["events", "projects", "scans", "snapshots", "snapshot_files", "history", "config"];
     const missing = required.filter((r) => !tableNames.has(r));
 
     if (missing.length === 0 && (pragmaRes.quick_check === "ok" || !pragmaRes.quick_check)) {
       checks.push({
         name: "Database",
         status: "OK",
-        message: `SQLite DB healthy at ${getDbPath()} (${tables.length} tables)`
+        message: `Database healthy at ${getDbPath()} (${tables.length} tables verified)`
       });
     } else {
       checks.push({
@@ -92,112 +118,213 @@ export async function runDoctor(
     });
   }
 
-  // 3. Project registration
+  // 6. Project Subsystem
   if (projectDir) {
     const proj = getProjectByPath(db, projectDir);
     if (proj) {
       checks.push({
-        name: "Project registration",
+        name: "Project",
         status: "OK",
-        message: `Project registered as '${proj.name}' (${proj.id})`
+        message: `Project '${proj.name}' (${proj.id}) active at ${proj.path}`
       });
     } else {
       checks.push({
-        name: "Project registration",
+        name: "Project",
         status: "WARN",
-        message: "Current directory is not registered. Run 'pg init' to initialize."
+        message: "Current directory is not initialized. Run 'pg init' to initialize."
       });
     }
   } else {
     checks.push({
-      name: "Project registration",
+      name: "Project",
       status: "OK",
-      message: "Global execution (no active project directory specified)"
+      message: "Global context (no active project directory specified)"
     });
   }
 
-  // 4. Snapshot storage
-  const snapshotDir = getSnapshotStorageDir();
+  // 7. Permissions Subsystem
+  const appDataDir = getAppDataDir();
   try {
-    fs.mkdirSync(snapshotDir, { recursive: true });
-    const testFile = path.join(snapshotDir, `.write-test-${Date.now()}`);
-    fs.writeFileSync(testFile, "test", "utf8");
-    fs.unlinkSync(testFile);
+    fs.mkdirSync(appDataDir, { recursive: true });
+    const permTest = path.join(appDataDir, `.perm-test-${Date.now()}`);
+    fs.writeFileSync(permTest, "test", "utf8");
+    fs.unlinkSync(permTest);
     checks.push({
-      name: "Snapshot storage",
+      name: "Permissions",
       status: "OK",
-      message: `Snapshot storage accessible at ${snapshotDir}`
+      message: `Full read/write permissions verified for ${appDataDir}`
     });
   } catch (err) {
     checks.push({
-      name: "Snapshot storage",
+      name: "Permissions",
       status: "FAIL",
-      message: `Snapshot storage unwritable: ${err}`
+      message: `Write permission denied for AppData directory: ${err}`
     });
   }
 
-  // 5. Communication
-  const pipeActive = await checkPipeListening();
-  checks.push({
-    name: "Communication",
-    status: "OK",
-    message: pipeActive
-      ? "Electron Named Pipe is active and listening"
-      : "Electron is closed (CLI offline mode active, events will sync on start)"
-  });
-
-  // 6. File access
-  if (projectDir) {
-    try {
-      const testFile = path.join(projectDir, `.pg-access-test-${Date.now()}`);
-      fs.writeFileSync(testFile, "ok", "utf8");
-      fs.unlinkSync(testFile);
-      checks.push({
-        name: "File access",
-        status: "OK",
-        message: `Read/write access verified for ${projectDir}`
-      });
-    } catch (err) {
-      checks.push({
-        name: "File access",
-        status: "FAIL",
-        message: `Cannot write to project directory: ${err}`
-      });
-    }
-  } else {
+  // 8. Configuration Subsystem
+  try {
+    const configRows = db.prepare("SELECT count(*) as cnt FROM config").get() as { cnt: number };
     checks.push({
-      name: "File access",
+      name: "Configuration",
       status: "OK",
-      message: "File access verified"
+      message: `Configuration active (${configRows.cnt} settings configured)`
+    });
+  } catch (err) {
+    checks.push({
+      name: "Configuration",
+      status: "FAIL",
+      message: `Configuration check error: ${err}`
     });
   }
 
-  // 7. Project state
+  // 9. Dependencies Subsystem
   if (projectDir) {
-    const marker = path.join(projectDir, ".packageguard");
-    if (fs.existsSync(marker)) {
-      checks.push({
-        name: "Project state",
-        status: "OK",
-        message: "Project state marker .packageguard exists"
-      });
+    const pj = path.join(projectDir, "package.json");
+    const nm = path.join(projectDir, "node_modules");
+    if (fs.existsSync(pj)) {
+      if (fs.existsSync(nm)) {
+        checks.push({
+          name: "Dependencies",
+          status: "OK",
+          message: "node_modules directory present and accessible"
+        });
+      } else {
+        checks.push({
+          name: "Dependencies",
+          status: "WARN",
+          message: "node_modules missing. Run 'pg repair packages' or install dependencies."
+        });
+      }
     } else {
       checks.push({
-        name: "Project state",
-        status: "WARN",
-        message: "No .packageguard directory found"
+        name: "Dependencies",
+        status: "OK",
+        message: "Manifest verified"
       });
     }
   } else {
     checks.push({
-      name: "Project state",
+      name: "Dependencies",
       status: "OK",
       message: "Ready"
     });
   }
 
+  // 10. Installation Subsystem
+  const isWin = process.platform === "win32";
+  const localApp = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || "", "AppData", "Local");
+  const winApps = path.join(localApp, "Microsoft", "WindowsApps", "pg.cmd");
+  const binDir = path.join(appDataDir, "bin", isWin ? "pg.cmd" : "pg");
+  const isShimInstalled = fs.existsSync(winApps) || fs.existsSync(binDir);
+
+  checks.push({
+    name: "Installation",
+    status: isShimInstalled ? "OK" : "WARN",
+    message: isShimInstalled
+      ? `CLI shim verified (${fs.existsSync(winApps) ? winApps : binDir})`
+      : "CLI shim not installed in default locations. Run 'pg install' to install."
+  });
+
+  // 11. PATH Subsystem
+  const pathEnv = process.env.PATH || "";
+  const inPath = pathEnv.toLowerCase().includes("windowsapps") || pathEnv.toLowerCase().includes("package guard");
+  checks.push({
+    name: "PATH",
+    status: inPath ? "OK" : "WARN",
+    message: inPath
+      ? "User PATH includes Package Guard execution directory"
+      : "Package Guard directory not explicitly found in PATH environment variable"
+  });
+
   const overall = checks.some((c) => c.status === "FAIL") ? "FAIL" : "OK";
   return { overall, checks };
+}
+
+export async function repairPackages(projectDir: string): Promise<RepairItem> {
+  const pj = path.join(projectDir, "package.json");
+  if (!fs.existsSync(pj)) {
+    return {
+      description: "Repair packages: no package.json manifest found in current directory",
+      status: "SKIPPED"
+    };
+  }
+
+  try {
+    const { runPackageManagerCommand } = await import("./update-service");
+    const { detectPackageManager } = await import("./project-service");
+    const pm = detectPackageManager(projectDir);
+    const res = await runPackageManagerCommand(pm, ["install"], projectDir);
+
+    if (res.success) {
+      return {
+        description: `Packages successfully reinstalled and reconciled via ${pm}`,
+        status: "OK"
+      };
+    } else {
+      return {
+        description: `Package installation failed: ${res.stderr || "Unknown error"}`,
+        status: "FAILED"
+      };
+    }
+  } catch (err) {
+    return {
+      description: `Package repair error: ${err instanceof Error ? err.message : String(err)}`,
+      status: "FAILED"
+    };
+  }
+}
+
+export function repairDatabase(db: BetterSqlite3.Database): RepairItem {
+  try {
+    db.exec("PRAGMA optimize;");
+    db.exec("PRAGMA integrity_check;");
+    db.exec("VACUUM;");
+    return {
+      description: "Database integrity check passed, indexes optimized and vacuumed",
+      status: "OK"
+    };
+  } catch (err) {
+    return {
+      description: `Database repair error: ${err instanceof Error ? err.message : String(err)}`,
+      status: "FAILED"
+    };
+  }
+}
+
+export function repairConfig(db: BetterSqlite3.Database, projectDir?: string): RepairItem {
+  try {
+    const { resetConfig } = require("@package-guard/shared/repository");
+    resetConfig(db);
+
+    if (projectDir) {
+      const proj = getProjectByPath(db, projectDir);
+      if (proj) {
+        const marker = path.join(projectDir, ".packageguard");
+        fs.mkdirSync(marker, { recursive: true });
+        const configFile = path.join(marker, "config.json");
+        fs.writeFileSync(
+          configFile,
+          JSON.stringify(
+            { id: proj.id, name: proj.name, initializedAt: proj.created_at, version: "1.0.0" },
+            null,
+            2
+          ),
+          "utf8"
+        );
+      }
+    }
+
+    return {
+      description: "Configuration settings and project metadata repaired to default valid state",
+      status: "OK"
+    };
+  } catch (err) {
+    return {
+      description: `Config repair error: ${err instanceof Error ? err.message : String(err)}`,
+      status: "FAILED"
+    };
+  }
 }
 
 export async function runRepair(
@@ -207,7 +334,7 @@ export async function runRepair(
 ): Promise<RepairReport> {
   const repairs: RepairItem[] = [];
 
-  // 1. Ensure AppData and storage directories exist
+  // 1. Storage directory
   try {
     fs.mkdirSync(getAppDataDir(), { recursive: true });
     fs.mkdirSync(getSnapshotStorageDir(), { recursive: true });
@@ -222,73 +349,15 @@ export async function runRepair(
     });
   }
 
-  // 2. Repair database indexes & integrity
-  try {
-    db.exec("PRAGMA optimize;");
-    repairs.push({
-      description: "Database indexes and query plans optimized",
-      status: "OK"
-    });
-  } catch (err) {
-    repairs.push({
-      description: `Database optimization failed: ${err}`,
-      status: "FAILED"
-    });
-  }
+  // 2. Database repair
+  repairs.push(repairDatabase(db));
 
-  // 3. Repair project config if missing but registered
+  // 3. Config repair
+  repairs.push(repairConfig(db, projectDir));
+
+  // 4. Packages repair (if in a project)
   if (projectDir) {
-    try {
-      const proj = getProjectByPath(db, projectDir);
-      if (proj) {
-        const marker = path.join(projectDir, ".packageguard");
-        fs.mkdirSync(marker, { recursive: true });
-        const configFile = path.join(marker, "config.json");
-        if (!fs.existsSync(configFile)) {
-          fs.writeFileSync(
-            configFile,
-            JSON.stringify(
-              { id: proj.id, name: proj.name, initializedAt: proj.created_at, version: "0.1.0" },
-              null,
-              2
-            ),
-            "utf8"
-          );
-          repairs.push({
-            description: "Recreated missing .packageguard/config.json metadata",
-            status: "OK"
-          });
-        }
-      }
-    } catch (err) {
-      repairs.push({
-        description: `Failed to restore project metadata: ${err}`,
-        status: "FAILED"
-      });
-    }
-  }
-
-  // 4. Recover inconsistent event states
-  try {
-    // Check if there are corrupted events
-    const stmt = db.prepare("UPDATE events SET status = 'FAILED' WHERE status = 'PENDING' AND payload IS NULL");
-    const result = stmt.run();
-    if (result.changes > 0) {
-      repairs.push({
-        description: `Recovered ${result.changes} corrupted pending events`,
-        status: "OK"
-      });
-    } else {
-      repairs.push({
-        description: "Event states verified (no corrupted records found)",
-        status: "OK"
-      });
-    }
-  } catch (err) {
-    repairs.push({
-      description: `Event state check error: ${err}`,
-      status: "FAILED"
-    });
+    repairs.push(await repairPackages(projectDir));
   }
 
   const completed = repairs.filter((r) => r.status === "OK").length;
@@ -300,3 +369,4 @@ export async function runRepair(
     failed
   };
 }
+

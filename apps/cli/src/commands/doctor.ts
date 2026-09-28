@@ -22,13 +22,14 @@ export async function executeDoctor(
   console.log("Package Guard Doctor\n");
 
   for (const c of report.checks) {
-    const tag = c.status === "OK" ? "[OK]" : c.status === "WARN" ? "[WARN]" : "[FAIL]";
+    const tag = c.status === "OK" ? "[PASS]" : c.status === "WARN" ? "[WARN]" : "[FAIL]";
     console.log(`${tag} ${c.name}`);
     if (c.status !== "OK") {
       console.log(`     ${c.message}`);
     }
   }
 
-  console.log(`\nOverall Health: ${report.overall}`);
+  const overallTag = report.overall === "OK" ? "PASS" : "FAIL";
+  console.log(`\nOverall Health: [${overallTag}]`);
   return report.overall === "OK" ? 0 : 1;
 }

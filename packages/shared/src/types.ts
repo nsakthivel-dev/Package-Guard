@@ -4,14 +4,18 @@ export interface Project {
   id: string;
   name: string;
   path: string;
-  created_at: string;
-  last_scan_at: string | null;
-  status: ProjectStatus;
+  created_at?: string;
+  last_scan_at?: string | null;
+  status?: ProjectStatus;
   // Optional compatibility fields
   packageManager?: string;
+  package_manager?: string;
+  active_snapshot_id?: string | null;
   createdAt?: number;
   updatedAt?: number;
+  packageJson?: any;
 }
+
 
 export type ChangeType = "ADDED" | "MODIFIED" | "DELETED";
 
@@ -125,5 +129,57 @@ export interface PackageGuardConfig {
   autoSync: boolean;
 }
 
+export interface HistoryItem {
+  id: string;
+  project_id?: string | null;
+  event_type: "SCAN" | "UPDATE" | "SNAPSHOT" | "RESTORE" | "VERIFY" | "ROLLBACK" | "INIT" | "CLEAN" | "CONFIG" | "SECURITY";
+  description: string;
+  details_json?: string | null;
+  created_at: string;
+}
+
+export interface BackupMetadata {
+  id: string;
+  backup_path: string;
+  size_bytes: number;
+  description?: string | null;
+  created_at: string;
+}
+
+export interface SecurityAdvisory {
+  id: string;
+  package_name: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  title?: string;
+  vulnerable_versions?: string;
+  fixed_in?: string;
+  url?: string;
+  created_at: string;
+}
+
+export interface CliCommandResult<T = unknown> {
+  success: boolean;
+  command: string;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  meta?: {
+    durationMs?: number;
+    projectId?: string;
+    timestamp?: string;
+  };
+}
+
+export const EXIT_SUCCESS = 0;
+export const EXIT_GENERAL_ERROR = 1;
+export const EXIT_INVALID_ARGUMENTS = 2;
+export const EXIT_PROJECT_ERROR = 3;
+export const EXIT_VERIFICATION_ERROR = 4;
+export const EXIT_SERVICE_ERROR = 5;
+
 // Re-export compatibility types from types/index.js if needed
 export * from "./types/index.js";
+

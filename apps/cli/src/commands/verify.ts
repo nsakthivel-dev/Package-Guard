@@ -1,12 +1,13 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { findProject, isInitialized } from "../services/project-service";
 import { verifyProject } from "../services/verify-service";
+import { insertHistory } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
 export async function executeVerify(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  args: string[]
 ): Promise<number> {
   const { project, projectDir } = findProject(db, targetDir);
 
@@ -16,7 +17,15 @@ export async function executeVerify(
     return 3;
   }
 
-  const result = await verifyProject(db, project.id, projectDir);
+  const isDeep = args.includes("--deep");
+  const result = await verifyProject(db, project.id, projectDir, { deep: isDeep });
+
+  insertHistory(db, {
+    projectId: project.id,
+    eventType: "VERIFY",
+    description: `Verification (${isDeep ? "deep" : "standard"}): ${result.status} (${result.filesChecked} files checked)`,
+    detailsJson: JSON.stringify(result)
+  });
 
   await sendCliEvent("verify", {
     projectId: project.id,
@@ -27,20 +36,33 @@ export async function executeVerify(
     missing: result.missing,
     unexpected: result.unexpected,
     status: result.status,
-    details: result.details
+    details: result.details,
+    deep: isDeep
   }, project.id);
 
-  console.log("Package Guard Verification\n");
+  console.log(`Package Guard Verification${isDeep ? " (deep mode)" : ""}\n`);
   console.log(`Files checked: ${result.filesChecked.toLocaleString()}`);
-  console.log(`Valid: ${result.valid.toLocaleString()}`);
-  console.log(`Changed: ${result.changed.toLocaleString()}`);
-  console.log(`Missing: ${result.missing.toLocaleString()}`);
-  console.log(`Unexpected: ${result.unexpected.toLocaleString()}`);
-  console.log(`\nResult: ${result.status}`);
+  console.log(`Valid:         ${result.valid.toLocaleString()}`);
+  console.log(`Changed:       ${result.changed.toLocaleString()}`);
+  console.log(`Missing:       ${result.missing.toLocaleString()}`);
+  console.log(`Unexpected:    ${result.unexpected.toLocaleString()}`);
+
+  if (result.details.length > 0) {
+    console.log("\nIssues Detected:");
+    for (const d of result.details.slice(0, 15)) {
+      console.log(`  - ${d.file}: ${d.issue}`);
+    }
+    if (result.details.length > 15) {
+      console.log(`  ... and ${result.details.length - 15} more`);
+    }
+  }
+
+  console.log(`\nResult: ${result.status}\n`);
 
   if (result.status === "OK") {
     return 0;
   }
 
-  return 5;
+  // Exit code 4 = verification/integrity failure
+  return 4;
 }

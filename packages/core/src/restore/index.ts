@@ -53,8 +53,9 @@ function splitByType(packages: SnapshotPackage[]): {
 }
 
 async function runInstall(project: Project, verbose: boolean = false): Promise<void> {
+  const pm = project.packageManager || 'npm';
   return new Promise((resolve, reject) => {
-    const child = spawn(project.packageManager, ['install'], {
+    const child: any = spawn(pm, ['install'], {
       cwd: project.path,
       stdio: verbose ? 'inherit' : 'pipe',
       shell: true,
@@ -62,12 +63,12 @@ async function runInstall(project: Project, verbose: boolean = false): Promise<v
     });
     let stderr = '';
     if (child.stderr) {
-      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
     }
-    child.on('error', (err) => reject(err));
-    child.on('close', (code) => {
+    child.on('error', (err: Error) => reject(err));
+    child.on('close', (code: number) => {
       if (code === 0) resolve();
-      else reject(new Error(`${project.packageManager} install exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
+      else reject(new Error(`${pm} install exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
     });
   });
 }

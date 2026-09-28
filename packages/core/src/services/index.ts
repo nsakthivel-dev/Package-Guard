@@ -175,12 +175,16 @@ export async function initProject(
   }
 
   const now = Date.now();
+  const isoNow = new Date(now).toISOString();
   const project: Project = {
     id: existing?.id ?? generateProjectId(),
     name: projectName,
     path: resolved,
     packageManager: pm,
     packageJson: packageJson ?? { name: projectName, version: '0.0.0' },
+    created_at: existing?.created_at ?? isoNow,
+    last_scan_at: existing?.last_scan_at ?? null,
+    status: existing?.status ?? 'ACTIVE',
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
@@ -256,8 +260,8 @@ export async function listProjectsCLI(): Promise<ProjectListEntry[]> {
       path: p.path,
       packageManager: p.packageManager,
       packageCount: last?.packageCount ?? 0,
-      createdAt: format(p.createdAt, 'yyyy-MM-dd HH:mm:ss'),
-      updatedAt: format(p.updatedAt, 'yyyy-MM-dd HH:mm:ss'),
+      createdAt: format(p.createdAt || Date.now(), 'yyyy-MM-dd HH:mm:ss'),
+      updatedAt: format(p.updatedAt || Date.now(), 'yyyy-MM-dd HH:mm:ss'),
     });
   }
   return rows;
@@ -419,12 +423,16 @@ export async function scanCore(targetPath?: string): Promise<ScanCoreResult> {
     } catch { /* ignore */ }
   }
 
+  const isoNow = new Date(now).toISOString();
   const project: Project = {
     id: existingProject?.id ?? generateProjectId(),
     name: existingProject?.name ?? projectName,
     path: dir,
     packageManager: existingProject?.packageManager ?? pm,
     packageJson: existingProject?.packageJson ?? { name: projectName, version: '1.0.0' },
+    created_at: existingProject?.created_at ?? isoNow,
+    last_scan_at: existingProject?.last_scan_at ?? null,
+    status: existingProject?.status ?? 'ACTIVE',
     createdAt: existingProject?.createdAt ?? now,
     updatedAt: now,
   };
@@ -537,7 +545,7 @@ export async function listSnapshotsCore(targetPath?: string): Promise<SnapshotIn
     }
   }
 
-  snaps.sort((a, b) => b.createdAt - a.createdAt);
+  snaps.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
 
   const snapDir = getSnapshotDir();
   const results: SnapshotInfo[] = [];
@@ -564,8 +572,8 @@ export async function listSnapshotsCore(targetPath?: string): Promise<SnapshotIn
     results.push({
       id: s.id,
       name: s.message || 'Untitled snapshot',
-      createdAt: s.createdAt,
-      createdFormatted: format(s.createdAt, 'yyyy-MM-dd HH:mm'),
+      createdAt: Number(s.createdAt),
+      createdFormatted: format(Number(s.createdAt), 'yyyy-MM-dd HH:mm'),
       packageCount: s.packageCount ?? s.packages?.length ?? 0,
       status,
       projectId: s.projectId,
@@ -830,10 +838,12 @@ export async function getStatusCore(): Promise<StatusCoreResult> {
   let latestScanTime = 0;
 
   for (const p of projects) {
-    if (p.updatedAt > latestScanTime) latestScanTime = p.updatedAt;
+    const upd = Number(p.updatedAt || 0);
+    if (upd > latestScanTime) latestScanTime = upd;
     const snaps = dbListSnapshots(p.id);
     const last = snaps[snaps.length - 1];
-    totalPkgs += last?.packageCount ?? (Array.isArray(p.packageJson?.dependencies) ? p.packageJson.dependencies.length : 0);
+    const deps = p.packageJson?.dependencies;
+    totalPkgs += last?.packageCount ?? (deps && typeof deps === 'object' ? Object.keys(deps).length : 0);
   }
 
   let totalSnapshots = 0;
@@ -842,7 +852,8 @@ export async function getStatusCore(): Promise<StatusCoreResult> {
     const snaps = dbListSnapshots(p.id);
     totalSnapshots += snaps.length;
     for (const s of snaps) {
-      if (s.createdAt > latestSnapshotTime) latestSnapshotTime = s.createdAt;
+      const c = Number(s.createdAt || 0);
+      if (c > latestSnapshotTime) latestSnapshotTime = c;
     }
   }
 

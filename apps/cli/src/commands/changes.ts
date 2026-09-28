@@ -35,33 +35,20 @@ export async function executeChanges(
   console.log(`Changes for ${project.name}:\n`);
 
   if (changes.length === 0) {
-    console.log("No changes detected since last baseline/snapshot.");
+    console.log("No changes detected since last baseline/snapshot.\n");
     return 0;
   }
 
-  if (modified.length > 0) {
-    console.log("Modified:");
-    for (const m of modified) {
-      console.log(`  ${m.path}`);
-    }
-    console.log("");
+  for (const a of added) {
+    console.log(`+ ${a.path} (added)`);
   }
-
-  if (added.length > 0) {
-    console.log("Added:");
-    for (const a of added) {
-      console.log(`  ${a.path}`);
-    }
-    console.log("");
+  for (const m of modified) {
+    console.log(`~ ${m.path} (modified)`);
   }
-
-  if (deleted.length > 0) {
-    console.log("Deleted:");
-    for (const d of deleted) {
-      console.log(`  ${d.path}`);
-    }
-    console.log("");
+  for (const d of deleted) {
+    console.log(`- ${d.path} (removed)`);
   }
+  console.log();
 
   return 0;
 }

@@ -179,4 +179,10 @@ execFileSync(cscExe, [
   csFile
 ], { stdio: "inherit" });
 
+try {
+  fs.unlinkSync(csFile);
+} catch {
+  // ignore
+}
+
 console.log(`Successfully built: ${targetExe}`);

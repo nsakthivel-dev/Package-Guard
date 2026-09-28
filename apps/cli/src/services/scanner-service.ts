@@ -131,11 +131,67 @@ export function detectPackages(projectDir: string): PackageInfo[] {
   return packages;
 }
 
+export function detectDeepPackages(projectDir: string): PackageInfo[] {
+  const packages = detectPackages(projectDir);
+  const seen = new Set(packages.map((p) => p.name));
+  const nodeModulesDir = path.join(projectDir, "node_modules");
+
+  if (fs.existsSync(nodeModulesDir)) {
+    try {
+      const scanNodeModules = (dir: string, depth = 0) => {
+        if (depth > 3) return;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            if (entry.name.startsWith(".")) continue;
+            if (entry.name.startsWith("@")) {
+              // Scope folder
+              scanNodeModules(path.join(dir, entry.name), depth + 1);
+            } else {
+              const pkgJson = path.join(dir, entry.name, "package.json");
+              if (fs.existsSync(pkgJson)) {
+                try {
+                  const data = JSON.parse(fs.readFileSync(pkgJson, "utf8"));
+                  const pkgName = data.name || entry.name;
+                  if (!seen.has(pkgName)) {
+                    seen.add(pkgName);
+                    packages.push({
+                      name: pkgName,
+                      version: data.version || "unknown",
+                      type: "transitive",
+                      source: "npm",
+                      status: "installed"
+                    });
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            }
+          }
+        }
+      };
+
+      scanNodeModules(nodeModulesDir);
+    } catch {
+      // ignore
+    }
+  }
+
+  return packages;
+}
+
+export interface ScanOptions {
+  deep?: boolean;
+  force?: boolean;
+}
+
 export async function scanProject(
   db: BetterSqlite3.Database,
   projectId: string,
   projectDir: string,
-  projectName: string
+  projectName: string,
+  options: ScanOptions = {}
 ): Promise<ScanResult> {
   const startTime = Date.now();
   const rawFiles = walkDirectory(projectDir);
@@ -150,30 +206,33 @@ export async function scanProject(
     }
   }
 
-  const packages = detectPackages(projectDir);
+  const packages = options.deep
+    ? detectDeepPackages(projectDir)
+    : detectPackages(projectDir);
 
   // Determine baseline for changes:
-  // First check if there is a snapshot. If not, check latest scan.
   let previousFileMap = new Map<string, { hash: string; size: number }>();
 
-  const latestSnap = getLatestSnapshotForProject(db, projectId) as Snapshot | undefined;
-  if (latestSnap) {
-    const snapFiles = getSnapshotFiles(db, latestSnap.id);
-    for (const sf of snapFiles) {
-      previousFileMap.set(sf.relative_path, { hash: sf.file_hash, size: sf.size_bytes });
-    }
-  } else {
-    const latestScan = getLatestScanForProject(db, projectId);
-    if (latestScan && latestScan.result_json) {
-      try {
-        const parsed = JSON.parse(latestScan.result_json) as ScanResult;
-        if (Array.isArray(parsed.files)) {
-          for (const f of parsed.files) {
-            previousFileMap.set(f.relativePath, { hash: f.hash, size: f.size });
+  if (!options.force) {
+    const latestSnap = getLatestSnapshotForProject(db, projectId) as Snapshot | undefined;
+    if (latestSnap) {
+      const snapFiles = getSnapshotFiles(db, latestSnap.id);
+      for (const sf of snapFiles) {
+        previousFileMap.set(sf.relative_path, { hash: sf.file_hash, size: sf.size_bytes });
+      }
+    } else {
+      const latestScan = getLatestScanForProject(db, projectId);
+      if (latestScan && latestScan.result_json) {
+        try {
+          const parsed = JSON.parse(latestScan.result_json) as ScanResult;
+          if (Array.isArray(parsed.files)) {
+            for (const f of parsed.files) {
+              previousFileMap.set(f.relativePath, { hash: f.hash, size: f.size });
+            }
           }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
     }
   }
@@ -240,3 +299,4 @@ export async function scanProject(
     createdAt: new Date().toISOString()
   };
 }
+

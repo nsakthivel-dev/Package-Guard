@@ -1,6 +1,6 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { findProject, isInitialized } from "../services/project-service";
-import { getProjectPackages } from "../services/package-service";
+import { getProjectPackages, getOutdatedPackages } from "../services/package-service";
 import { sendCliEvent } from "../pipe-client";
 
 export async function executePackages(
@@ -17,6 +17,8 @@ export async function executePackages(
   }
 
   const packages = getProjectPackages(projectDir);
+  const outdated = await getOutdatedPackages(projectDir);
+  const outdatedMap = new Map(outdated.map((o) => [o.name.toLowerCase(), o.latest]));
 
   await sendCliEvent("packages", {
     projectId: project.id,
@@ -34,21 +36,22 @@ export async function executePackages(
 
   console.log(
     "Package".padEnd(28, " ") +
-    "Version".padEnd(16, " ") +
-    "Type".padEnd(18, " ") +
-    "Source".padEnd(10, " ") +
+    "Installed".padEnd(14, " ") +
+    "Latest".padEnd(14, " ") +
+    "Type".padEnd(16, " ") +
     "Status"
   );
-  console.log("--------------------------------------------------------------------------------");
+  console.log("─".repeat(80));
 
   for (const p of packages) {
     const nameStr = p.name.slice(0, 26).padEnd(28, " ");
-    const verStr = p.version.slice(0, 14).padEnd(16, " ");
-    const typeStr = p.type.slice(0, 16).padEnd(18, " ");
-    const srcStr = p.source.slice(0, 8).padEnd(10, " ");
+    const verStr = p.version.slice(0, 12).padEnd(14, " ");
+    const latestStr = (outdatedMap.get(p.name.toLowerCase()) || p.version).slice(0, 12).padEnd(14, " ");
+    const typeStr = p.type.slice(0, 14).padEnd(16, " ");
     const statusStr = p.status;
-    console.log(`${nameStr}${verStr}${typeStr}${srcStr}${statusStr}`);
+    console.log(`${nameStr}${verStr}${latestStr}${typeStr}${statusStr}`);
   }
+  console.log();
 
   return 0;
 }

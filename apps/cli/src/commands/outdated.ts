@@ -16,7 +16,7 @@ export async function executeOutdated(
     return 3;
   }
 
-  console.log("Checking for outdated packages...");
+  console.log("Checking for outdated packages...\n");
   const outdated = await getOutdatedPackages(projectDir);
 
   await sendCliEvent("outdated", {
@@ -26,24 +26,27 @@ export async function executeOutdated(
     outdated
   }, project.id);
 
-  console.log("");
   if (outdated.length === 0) {
-    console.log("All checked packages are up to date.");
+    console.log("All checked packages are up to date.\n");
     return 0;
   }
 
   console.log(
-    "Package".padEnd(25, " ") +
+    "Package".padEnd(28, " ") +
     "Current".padEnd(16, " ") +
-    "Latest"
+    "Latest".padEnd(16, " ") +
+    "Update Type"
   );
-  console.log("-------------------------------------------------------");
+  console.log("─".repeat(70));
 
   for (const o of outdated) {
-    const pkgStr = o.name.slice(0, 23).padEnd(25, " ");
+    const pkgStr = o.name.slice(0, 26).padEnd(28, " ");
     const curStr = o.current.slice(0, 14).padEnd(16, " ");
-    console.log(`${pkgStr}${curStr}${o.latest}`);
+    const latStr = o.latest.slice(0, 14).padEnd(16, " ");
+    const bumpStr = (o.bump || "update").toUpperCase();
+    console.log(`${pkgStr}${curStr}${latStr}${bumpStr}`);
   }
+  console.log();
 
   return 0;
 }

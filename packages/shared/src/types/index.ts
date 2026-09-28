@@ -5,6 +5,8 @@ export interface Project {
   name: string;
   path: string;
   packageManager?: PackageManager;
+  package_manager?: string;
+  active_snapshot_id?: string | null;
   packageJson?: any;
   createdAt?: number;
   updatedAt?: number;
@@ -12,6 +14,7 @@ export interface Project {
   last_scan_at?: string | null;
   status?: "ACTIVE" | "ARCHIVED";
 }
+
 
 export interface SnapshotPackage {
   name: string;
