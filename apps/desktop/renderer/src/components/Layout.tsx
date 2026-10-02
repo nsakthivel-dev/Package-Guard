@@ -108,11 +108,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Logo Area */}
         <div className="px-5 py-5 mb-2">
           <div className="flex items-center gap-3 cursor-pointer group">
-            <div className="w-8 h-8 rounded-lg bg-[#4F46E5] flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
-              <span className="material-symbols-outlined text-white text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                security
-              </span>
-            </div>
+            <img
+              src="./logo.png"
+              alt="PackageGuard"
+              className="w-8 h-8 rounded-lg object-contain shrink-0 transition-transform group-hover:scale-105"
+            />
             <div className="flex flex-col">
               <span className="text-[15px] font-semibold text-white leading-tight">PackageGuard</span>
             </div>
@@ -149,11 +149,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Bottom Account Area */}
         <div className="px-3 py-4 border-t border-sidebar-border">
           <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors">
-            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-[16px] text-white/70">
-                shield_person
-              </span>
-            </div>
+            <img
+              src="./logo.png"
+              alt="PackageGuard"
+              className="w-7 h-7 rounded-full object-contain shrink-0"
+            />
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-medium text-white truncate">PackageGuard</p>
               <p className="text-[10px] text-sidebar-foreground/60 truncate">v2.4.0</p>

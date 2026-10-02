@@ -375,9 +375,17 @@ async function performFullScan() {
 }
 
 function createWindow() {
+  const iconCandidate = [
+    path.join(__dirname, '..', '..', '..', 'build', 'icon.ico'),
+    path.join(__dirname, '..', '..', '..', 'build', 'icon.png'),
+    path.join(__dirname, '..', 'renderer', 'dist', 'logo.png'),
+    path.join(process.resourcesPath || '', 'build', 'icon.ico'),
+  ].find(p => fs.existsSync(p));
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: iconCandidate,
     show: false, // Don't show immediately to prevent flickering
     frame: false,
     titleBarStyle: 'hidden',
