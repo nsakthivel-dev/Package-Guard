@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { runAutoScan } from "@/lib/autoScan";
+import { usePackageStore } from "@/store/usePackageStore";
 
 // Palette token pulled from the Dashboard palette
 const INDIGO = "#6366F1";
@@ -11,28 +13,61 @@ export function PermissionDialog() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const checkPermission = async () => {
       const api = (window as any).electronAPI;
-      if (!api) { setLoading(false); return; }
-      const prefs = await api.getSettings();
-      if (prefs.backgroundPermission === null || (!prefs.dontAskAgain && prefs.backgroundPermission === false)) {
-        setShow(true);
+      if (!api) { 
+        if (isMounted) setLoading(false); 
+        return; 
       }
-      setLoading(false);
+      try {
+        const prefs = await api.getSettings();
+        if (isMounted) {
+          // If permission is undecided (null) or denied without "don't ask again", show modal
+          if (prefs.backgroundPermission === null || (!prefs.dontAskAgain && prefs.backgroundPermission === false)) {
+            setShow(true);
+          }
+        }
+      } catch (err) {
+        console.error("[PERMISSION] Error checking permission settings:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     };
     checkPermission();
+    return () => { isMounted = false; };
   }, []);
 
   const handleResponse = async (allowed: boolean) => {
     const api = (window as any).electronAPI;
-    if (api) await api.updateSettings({ backgroundPermission: allowed, dontAskAgain: dontAsk || allowed });
+    if (api) {
+      await api.updateSettings({ 
+        backgroundPermission: allowed, 
+        dontAskAgain: Boolean(dontAsk || allowed) 
+      });
+    }
     setShow(false);
+
+    if (allowed) {
+      console.log("[PERMISSION] User granted permission. Starting background scanner.");
+      // Explicit user consent: start the scan now
+      runAutoScan({ force: true });
+    } else {
+      console.log("[PERMISSION] User declined permission. No scan started.");
+      // Ensure scan status remains completely idle
+      usePackageStore.getState().setScanStatus("idle");
+    }
+  };
+
+  const handleDismiss = async () => {
+    // Closing via 'X', ESC, or clicking outside behaves safely as declining without starting scan
+    await handleResponse(false);
   };
 
   if (loading || !show) return null;
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
+    <Dialog open={show} onOpenChange={(open) => { if (!open) handleDismiss(); }}>
       <DialogContent className="max-w-md p-0 border-none bg-transparent shadow-none focus:outline-none overflow-visible">
         {/*
           Modal card — matches Dashboard card system:

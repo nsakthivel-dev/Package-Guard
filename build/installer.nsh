@@ -49,7 +49,22 @@
   DeleteRegKey HKCU "Software\Package Guard"
   DeleteRegKey HKCU "Software\PackageGuard"
 
+  ; Clean Electron Chromium cache so reinstall doesn't run stale cached bytecode
+  DetailPrint "Cleaning Electron application cache..."
+  RMDir /r "$APPDATA\Package Guard\Cache"
+  RMDir /r "$APPDATA\Package Guard\Code Cache"
+  RMDir /r "$APPDATA\Package Guard\DawnGraphiteCache"
+  RMDir /r "$APPDATA\Package Guard\DawnWebGPUCache"
+  RMDir /r "$APPDATA\Package Guard\GPUCache"
+  RMDir /r "$APPDATA\Package Guard\blob_storage"
+  RMDir /r "$APPDATA\Package Guard\Session Storage"
+  RMDir /r "$APPDATA\Package Guard\data"
+  RMDir /r "$APPDATA\PackageGuard\temp"
+  RMDir /r "$APPDATA\PackageGuard\cache"
+  RMDir /r "$APPDATA\package-guard"
+  RMDir /r "$LOCALAPPDATA\package-guard-updater"
+
   ; DATA PRESERVATION:
-  ; User data in $APPDATA\PackageGuard\data, $LOCALAPPDATA\Package Guard\data,
-  ; snapshots, history, and projects are strictly preserved.
+  ; User-owned project data in $APPDATA\PackageGuard\data, $LOCALAPPDATA\Package Guard\data,
+  ; and snapshots are preserved unless clean reset is selected.
 !macroend

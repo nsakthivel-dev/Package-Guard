@@ -532,9 +532,28 @@ app.whenReady().then(async () => {
     log.error('startup', `Failed to scan environments: ${error.message}`);
   }
 
-  // Re-scan every 6 hours while app is open
+  // Auto-scan for venvs on startup if configured in settings and background permission granted
+  try {
+    const startupSettings = dbHandler.getSettings();
+    if (startupSettings.backgroundPermission === true && startupSettings.autoScanVenvsOnStartup && startupSettings.defaultVenvScanDir) {
+      log.info('startup', `Auto-scanning venvs on startup in: ${startupSettings.defaultVenvScanDir}`);
+      venvHandler.findVenvs(startupSettings.defaultVenvScanDir).then((discoveredVenvs) => {
+        for (const v of discoveredVenvs) {
+          dbHandler.registerVenv(v);
+        }
+        log.info('startup', `Auto-scanned venvs on startup — registered ${discoveredVenvs.length} venv(s)`);
+      }).catch((e) => {
+        log.warn('startup', `Auto-scan for venvs on startup warning: ${e.message}`);
+      });
+    }
+  } catch (venvErr) {
+    log.warn('startup', `Auto-scan for venvs on startup error: ${venvErr.message}`);
+  }
+
+  // Re-scan every 6 hours while app is open ONLY if background permission is granted
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    const settings = dbHandler.getSettings();
+    if (settings.backgroundPermission === true && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
       mainWindow.webContents.send('trigger:auto-scan');
     }
   }, 6 * 60 * 60 * 1000);
@@ -792,6 +811,8 @@ function getStatus(installed, latest) {
 
 // Dashboard
 ipcMain.handle('dashboard:summary', async () => {
+  const settings = dbHandler.getSettings();
+  const includeVenvs = settings.includeVenvsInDashboard !== false;
   const envs = dbHandler.getEnvironments();
   const venvs = dbHandler.getVenvs();
   const allPackages = [];
@@ -801,12 +822,14 @@ ipcMain.handle('dashboard:summary', async () => {
     allPackages.push(...pkgs);
   }
 
-  // Also include venv packages if they are registered in the packages table
-  // But wait, venv packages might not be in the packages table yet if they haven't been scanned.
-  // The user wants "Total packages across all venvs" and "Outdated packages in venvs".
-  
-  // For now, let's just include environments count including venvs
-  const totalEnvironments = envs.length + venvs.length;
+  if (includeVenvs) {
+    for (const venv of venvs) {
+      const pkgs = dbHandler.getPackages(venv.id);
+      allPackages.push(...pkgs);
+    }
+  }
+
+  const totalEnvironments = envs.length + (includeVenvs ? venvs.length : 0);
 
   const upToDate = allPackages.filter(p => p.status === 'up-to-date').length;
   const patchUpdates = allPackages.filter(p => p.status === 'patch').length;
@@ -822,7 +845,7 @@ ipcMain.handle('dashboard:summary', async () => {
   return {
     totalPackages: allPackages.length,
     totalEnvironments,
-    totalVenvs: venvs.length,
+    totalVenvs: includeVenvs ? venvs.length : 0,
     upToDate,
     needsUpdate: patchUpdates + minorUpdates + majorUpdates,
     majorUpdates,
@@ -834,7 +857,15 @@ ipcMain.handle('dashboard:summary', async () => {
 });
 
 ipcMain.handle('dashboard:status-breakdown', async () => {
-  const envs = dbHandler.getEnvironments();
+  const settings = dbHandler.getSettings();
+  const includeVenvs = settings.includeVenvsInDashboard !== false;
+  const envs = [...dbHandler.getEnvironments()];
+  if (includeVenvs) {
+    const venvs = dbHandler.getVenvs();
+    for (const v of venvs) {
+      envs.push({ id: v.id, name: v.name || path.basename(v.path) });
+    }
+  }
   return envs.map(env => {
     const pkgs = dbHandler.getPackages(env.id);
     return {

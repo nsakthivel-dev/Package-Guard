@@ -91,6 +91,7 @@ function migrateLegacyDataIfNeeded(targetRoot: string): void {
         if (fs.existsSync(oldFile)) {
           fs.mkdirSync(targetDataDir, { recursive: true });
           fs.copyFileSync(oldFile, targetDbPath);
+          try { fs.renameSync(oldFile, `${oldFile}.migrated`); } catch { /* ignore */ }
           break;
         }
       }
@@ -102,10 +103,14 @@ function migrateLegacyDataIfNeeded(targetRoot: string): void {
     if (fs.existsSync(legacySnaps) && fs.existsSync(targetSnaps)) {
       const files = fs.readdirSync(legacySnaps);
       for (const file of files) {
+        if (file.endsWith('.migrated')) continue;
         const src = path.join(legacySnaps, file);
         const dst = path.join(targetSnaps, file);
         if (!fs.existsSync(dst) && fs.statSync(src).isFile()) {
-          try { fs.copyFileSync(src, dst); } catch { /* ignore */ }
+          try {
+            fs.copyFileSync(src, dst);
+            fs.renameSync(src, `${src}.migrated`);
+          } catch { /* ignore */ }
         }
       }
     }
@@ -117,6 +122,7 @@ function migrateLegacyDataIfNeeded(targetRoot: string): void {
     if (fs.existsSync(legacyConfig) && !fs.existsSync(targetConfig)) {
       fs.mkdirSync(targetConfigDir, { recursive: true });
       fs.copyFileSync(legacyConfig, targetConfig);
+      try { fs.renameSync(legacyConfig, `${legacyConfig}.migrated`); } catch { /* ignore */ }
     }
   } catch (err) {
     // Non-blocking migration warning

@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   useListPackages,
   useListEnvironments,
@@ -14,8 +14,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Download } from "lucide-react";
 
 // ─── Palette (identical to Dashboard) ────────────────────────────────────────
 const PALETTE = {
@@ -428,14 +426,6 @@ export default function DetailedAnalysis() {
                   }
                 </SelectContent>
               </Select>
-              <button
-                onClick={() => console.log("Export PNG")}
-                disabled={!selectedEnvId}
-                className="flex items-center gap-1.5 px-3 py-2 h-9 bg-surface-container border border-card-border rounded-lg text-[12px] font-medium text-on-surface hover:bg-surface-container-high transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Download className="w-3.5 h-3.5 text-muted-foreground" />
-                Export PNG
-              </button>
             </div>
           }
         />

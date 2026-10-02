@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Link, useLocation } from "wouter";
 import { Loader2 } from "lucide-react";
 import { cn, formatRelativeTime } from "@/lib/utils";
@@ -51,20 +51,24 @@ function NavItem({
   active: boolean;
 }) {
   return (
-    <Link href={href}>
-      <div
+    <Link
+      href={href}
+      className={cn(
+        "group relative flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors duration-150 outline-none select-none cursor-pointer",
+        active
+          ? "bg-white/10 text-white shadow-sm"
+          : "text-sidebar-foreground hover:bg-white/[0.06] hover:text-white"
+      )}
+    >
+      <span
         className={cn(
-          "flex items-center gap-3 px-3 py-2 rounded-lg text-[14px] font-medium transition-all cursor-pointer",
-          active
-            ? "bg-white/10 text-white"
-            : "text-sidebar-foreground hover:bg-white/5 hover:text-white/90"
+          "material-symbols-outlined text-[19px] shrink-0 transition-colors duration-150",
+          active ? "text-white active-icon" : "text-sidebar-foreground/80 group-hover:text-white"
         )}
       >
-        <span className={cn("material-symbols-outlined text-[20px] shrink-0", active && "active-icon")}>
-          {icon}
-        </span>
-        <span className="truncate">{label}</span>
-      </div>
+        {icon}
+      </span>
+      <span className="truncate">{label}</span>
     </Link>
   );
 }
@@ -124,7 +128,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   {group.label}
                 </span>
               </div>
-              <div className="space-y-0.5">
+              <div className="flex flex-col gap-1">
                 {group.items.map(({ href, label, icon }) => {
                   const active = location === href || (href !== "/" && location.startsWith(href));
                   return (
@@ -168,26 +172,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {currentPageLabel}
             </h1>
             {(location === "/" || location === "/dashboard/detailed") && (
-              <div className="flex gap-1">
-                <Link href="/">
-                  <div className={cn(
-                    "px-3 py-1.5 rounded-md text-[13px] font-medium cursor-pointer transition-all",
+              <div className="flex items-center gap-1">
+                <Link
+                  href="/"
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-[13px] font-medium cursor-pointer transition-colors block select-none",
                     location === "/" 
                       ? "bg-muted text-on-surface" 
                       : "text-muted-foreground hover:text-on-surface hover:bg-muted/50"
-                  )}>
-                    Global View
-                  </div>
+                  )}
+                >
+                  Global View
                 </Link>
-                <Link href="/dashboard/detailed">
-                  <div className={cn(
-                    "px-3 py-1.5 rounded-md text-[13px] font-medium cursor-pointer transition-all",
+                <Link
+                  href="/dashboard/detailed"
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-[13px] font-medium cursor-pointer transition-colors block select-none",
                     location === "/dashboard/detailed" 
                       ? "bg-muted text-on-surface" 
                       : "text-muted-foreground hover:text-on-surface hover:bg-muted/50"
-                  )}>
-                    Detailed Analysis
-                  </div>
+                  )}
+                >
+                  Detailed Analysis
                 </Link>
               </div>
             )}
@@ -202,23 +208,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span className="font-medium">{statusLabel[scanStatus]}</span>
               </div>
             )}
-            {scanStatus === 'idle' && lastScanned && (
+            {scanStatus === 'idle' && lastScanned && (settings as any)?.backgroundPermission === true && (
               <span className="text-[12px] text-muted-foreground font-medium hidden md:block">
                 Last scan: {formatRelativeTime(lastScanned)}
               </span>
             )}
 
-            {/* Search */}
-            <div className="relative hidden md:block">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[18px]">
-                search
-              </span>
-              <input
-                type="search"
-                placeholder="Search..."
-                className="w-[200px] h-9 pl-9 pr-4 rounded-lg border border-card-border bg-surface-container-lowest text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 transition-all"
-              />
-            </div>
 
             {/* Notifications Bell */}
             <button className="relative w-9 h-9 rounded-lg border border-card-border bg-surface-container-lowest flex items-center justify-center text-muted-foreground hover:text-on-surface hover:bg-muted transition-all">

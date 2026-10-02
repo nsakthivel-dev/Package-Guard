@@ -24,7 +24,9 @@ const store = {
     dontAskAgain: false,
     defaultVenvScanDir: '',
     autoScanVenvsOnStartup: false,
-    includeVenvsInDashboard: true
+    includeVenvsInDashboard: true,
+    securityLevel: 'Standard',
+    ignoredPackages: []
   },
   history: [],
   snapshots: [],
@@ -71,7 +73,9 @@ function loadStorage() {
           concurrencyLimit: legacy.concurrency_limit ?? (legacy.concurrencyLimit ?? 5),
           autoSnapshotBeforeUpdate: legacy.auto_snapshot_before_update !== undefined ? Boolean(legacy.auto_snapshot_before_update) : (legacy.autoSnapshotBeforeUpdate ?? true),
           theme: legacy.theme ?? 'dark',
-          customScanPaths: typeof legacy.custom_scan_paths === 'string' ? JSON.parse(legacy.custom_scan_paths) : (legacy.customScanPaths ?? [])
+          customScanPaths: typeof legacy.custom_scan_paths === 'string' ? JSON.parse(legacy.custom_scan_paths) : (legacy.customScanPaths ?? []),
+          securityLevel: legacy.securityLevel ?? 'Standard',
+          ignoredPackages: Array.isArray(legacy.ignoredPackages) ? legacy.ignoredPackages : []
         };
         
         // Remove legacy keys and separated permission keys

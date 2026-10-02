@@ -53,16 +53,16 @@ function IconTile({
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 function SnapBadge({ status }: { status: "verified" | "restoring" | "failed" | string }) {
-  const map: Record<string, { label: string; bg: string; text: string }> = {
-    verified:  { label: "Verified",  bg: `${PALETTE.healthy}20`, text: "#0f766e" },
-    restoring: { label: "Restoring", bg: `${PALETTE.minor}20`,   text: PALETTE.major },
-    failed:    { label: "Failed",    bg: "#ef444420",             text: "#dc2626" },
+  const map: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    verified:  { label: "Verified",  bg: `${PALETTE.healthy}18`, text: "#0f766e", border: `${PALETTE.healthy}40` },
+    restoring: { label: "Restoring", bg: `${PALETTE.minor}18`,   text: PALETTE.major, border: `${PALETTE.minor}40` },
+    failed:    { label: "Failed",    bg: "#ef444418",             text: "#dc2626", border: "#ef444440" },
   };
-  const s = map[status] ?? { label: status, bg: `${PALETTE.minor}20`, text: PALETTE.major };
+  const s = map[status] ?? { label: status, bg: `${PALETTE.minor}18`, text: PALETTE.major, border: `${PALETTE.minor}40` };
   return (
     <span
-      className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
-      style={{ background: s.bg, color: s.text }}
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border select-none shrink-0"
+      style={{ background: s.bg, color: s.text, borderColor: s.border }}
     >
       {s.label}
     </span>
@@ -106,6 +106,9 @@ export default function Snapshots() {
   const restoreSnapshot = useRestoreSnapshot();
 
   const [showCreate, setShowCreate]         = useState(false);
+  const [viewingSnapshot, setViewingSnapshot] = useState<any | null>(null);
+  const [snapshotSearchQuery, setSnapshotSearchQuery] = useState("");
+  const [filterType, setFilterType]         = useState<string>("all");
   const [envId, setEnvId]                   = useState<string>("");
   const [name, setName]                     = useState("");
   const [packageName, setPackageName]       = useState("");
@@ -115,12 +118,62 @@ export default function Snapshots() {
   const [envFilter, setEnvFilter]           = useState<EnvFilter>("all");
   const [open, setOpen]                     = useState(false);
 
+  useEffect(() => {
+    setSnapshotSearchQuery("");
+    setFilterType("all");
+  }, [viewingSnapshot?.id]);
+
   const { data: allPackages } = useListPackages();
 
   const envPackages = useMemo(() => {
     if (!envId) return [];
     return allPackages?.filter((p: Package) => String(p.environmentId) === envId) || [];
   }, [allPackages, envId]);
+
+  const snapshotPackages = useMemo(() => {
+    if (!viewingSnapshot) return [];
+    const list: any[] = Array.isArray(viewingSnapshot.packages) ? viewingSnapshot.packages : [];
+    if (list.length === 0 && viewingSnapshot.packageName) {
+      return [{
+        name: viewingSnapshot.packageName,
+        version: viewingSnapshot.packageVersion || "recorded",
+        ecosystem: viewingSnapshot.environmentName?.toLowerCase().includes("venv") ? "pip" : "npm",
+        type: "dependency",
+        status: "installed",
+      }];
+    }
+    return list;
+  }, [viewingSnapshot]);
+
+  const filteredSnapshotPackages = useMemo(() => {
+    return snapshotPackages.filter((pkg: any) => {
+      const q = snapshotSearchQuery.trim().toLowerCase();
+      const matchesQuery = !q || (
+        (pkg.name && String(pkg.name).toLowerCase().includes(q)) ||
+        (pkg.version && String(pkg.version).toLowerCase().includes(q)) ||
+        (pkg.ecosystem && String(pkg.ecosystem).toLowerCase().includes(q)) ||
+        (pkg.source && String(pkg.source).toLowerCase().includes(q)) ||
+        (pkg.type && String(pkg.type).toLowerCase().includes(q))
+      );
+
+      if (!matchesQuery) return false;
+
+      if (filterType === "all") return true;
+      if (filterType === "dependency") return pkg.type !== "devDependency";
+      if (filterType === "devDependency") return pkg.type === "devDependency";
+      return true;
+    });
+  }, [snapshotPackages, snapshotSearchQuery, filterType]);
+
+  const packageTypeCounts = useMemo(() => {
+    let dev = 0;
+    let prod = 0;
+    for (const p of snapshotPackages) {
+      if (p.type === "devDependency") dev++;
+      else prod++;
+    }
+    return { all: snapshotPackages.length, dev, prod };
+  }, [snapshotPackages]);
 
   const handlePackageSelect = (pkg: Package) => {
     setPackageName(pkg.name);
@@ -289,15 +342,15 @@ export default function Snapshots() {
       {/* ── Loading skeletons ─────────────────────────────────────────────── */}
       {isLoading && (
         <div className="bg-surface-container-lowest border border-card-border rounded-xl shadow-[var(--shadow-premium)] overflow-hidden">
-          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_100px_100px_80px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/40">
+          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/40">
             {["Snapshot","Environment","Packages","Date","Status",""].map((h) => (
               <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
             ))}
           </div>
           <div className="divide-y divide-card-border">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_100px_100px_80px] gap-3 px-5 py-3 items-center">
-                {[160, 90, 60, 80, 60, 60].map((w, j) => (
+              <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-3 items-center">
+                {[160, 90, 60, 80, 60, 140].map((w, j) => (
                   <div key={j} className="h-4 bg-surface-container animate-pulse rounded" style={{ maxWidth: w }} />
                 ))}
               </div>
@@ -357,7 +410,7 @@ export default function Snapshots() {
                 </div>
 
                 {/* Table header */}
-                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_minmax(0,1.3fr)_90px_96px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/20">
+                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/20">
                   {["Snapshot Name","Package","Packages","Date Created","Status",""].map((h) => (
                     <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
                   ))}
@@ -371,7 +424,7 @@ export default function Snapshots() {
                     return (
                       <div
                         key={snap.id}
-                        className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_80px_minmax(0,1.3fr)_90px_96px] gap-3 px-5 py-3 items-center hover:bg-surface-container/50 transition-colors group"
+                        className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-3 items-center hover:bg-surface-container/50 transition-colors group"
                       >
                         {/* Name */}
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -408,33 +461,47 @@ export default function Snapshots() {
                         </span>
 
                         {/* Status */}
-                        <SnapBadge status="verified" />
+                        <div className="flex items-center justify-start min-w-0">
+                          <SnapBadge status="verified" />
+                        </div>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-1 justify-end">
+                        <div className="flex items-center justify-end gap-2 shrink-0">
+                          <button
+                            onClick={() => setViewingSnapshot(snap)}
+                            className="relative inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 shrink-0 select-none border border-card-border bg-surface-container/70 hover:bg-surface-container hover:text-primary text-on-surface active:scale-[0.98] shadow-xs cursor-pointer"
+                            title="View snapshot details and packages"
+                          >
+                            <span className="material-symbols-outlined text-[14px] shrink-0 text-muted-foreground">visibility</span>
+                            <span>View</span>
+                          </button>
                           <button
                             disabled={isRestoring}
                             onClick={() => handleRestore(snap.id)}
                             className={cn(
-                              "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all",
+                              "relative inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 shrink-0 select-none cursor-pointer",
                               isRestoring
                                 ? "opacity-60 cursor-not-allowed"
-                                : "hover:opacity-90 active:scale-95"
+                                : "hover:shadow-sm hover:brightness-95 active:scale-[0.98]"
                             )}
-                            style={{ background: `${PALETTE.major}15`, color: PALETTE.major }}
+                            style={{
+                              background: `${PALETTE.major}18`,
+                              color: PALETTE.major,
+                              border: `1px solid ${PALETTE.major}30`,
+                            }}
                             title="Restore this snapshot"
                           >
-                            <span className={cn("material-symbols-outlined text-[14px]", isRestoring && "animate-spin")}>
+                            <span className={cn("material-symbols-outlined text-[14px] shrink-0", isRestoring && "animate-spin")}>
                               {isRestoring ? "refresh" : "history"}
                             </span>
-                            {isRestoring ? "…" : "Restore"}
+                            <span>{isRestoring ? "Restoring…" : "Restore"}</span>
                           </button>
                           <button
                             onClick={() => handleDelete(snap.id)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                            className="relative w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-all duration-150 shrink-0 select-none cursor-pointer"
                             title="Delete snapshot"
                           >
-                            <span className="material-symbols-outlined text-[15px]">delete</span>
+                            <span className="material-symbols-outlined text-[16px]">delete</span>
                           </button>
                         </div>
                       </div>
@@ -573,6 +640,250 @@ export default function Snapshots() {
               {createSnapshot.isPending ? "Capturing…" : "Confirm Snapshot"}
             </button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── View Snapshot Details Dialog ───────────────────────────────────── */}
+      <Dialog open={Boolean(viewingSnapshot)} onOpenChange={(open) => !open && setViewingSnapshot(null)}>
+        <DialogContent className="rounded-2xl border-card-border bg-surface-container-lowest shadow-2xl p-6 max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
+          {viewingSnapshot && (
+            <>
+              {/* Header */}
+              <DialogHeader className="mb-3 shrink-0">
+                <div className="flex items-center justify-between gap-3 pr-6">
+                  <div className="flex items-center gap-3">
+                    <IconTile icon="bookmark" color={PALETTE.major} size="md" />
+                    <div className="text-left">
+                      <div className="flex items-center gap-2">
+                        <DialogTitle className="text-[16px] font-bold text-on-surface">
+                          {viewingSnapshot.name}
+                        </DialogTitle>
+                        <SnapBadge status={viewingSnapshot.status || "verified"} />
+                      </div>
+                      <p className="text-[12px] text-muted-foreground mt-0.5">
+                        Captured packages for <span className="font-semibold text-on-surface">{viewingSnapshot.environmentName}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              {/* Snapshot Meta Info Box */}
+              <div className="grid grid-cols-3 gap-3 p-3 rounded-xl bg-surface-container/50 border border-card-border shrink-0 text-left mb-3">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Created</span>
+                  <span className="text-[12px] font-medium text-on-surface">
+                    {format(new Date(viewingSnapshot.createdAt || (viewingSnapshot as any).created_at || Date.now()), "MMM d, yyyy · HH:mm")}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Total Packages</span>
+                  <span className="text-[12px] font-semibold text-primary">
+                    {snapshotPackages.length} captured
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Environment</span>
+                  <span className="text-[12px] font-medium text-on-surface truncate block" title={viewingSnapshot.environmentName}>
+                    {viewingSnapshot.environmentName}
+                  </span>
+                </div>
+                {viewingSnapshot.notes && (
+                  <div className="col-span-3 pt-2 mt-1 border-t border-card-border/60">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground block">Notes</span>
+                    <p className="text-[12px] text-on-surface italic mt-0.5">"{viewingSnapshot.notes}"</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Search & Filter Toolbar */}
+              <div className="flex items-center justify-between gap-3 shrink-0 mb-3">
+                <div className="relative flex-1">
+                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-[16px] text-muted-foreground">search</span>
+                  <Input
+                    placeholder="Search packages by name, version, or type…"
+                    value={snapshotSearchQuery}
+                    onChange={(e) => setSnapshotSearchQuery(e.target.value)}
+                    className="h-9 pl-8 pr-7 rounded-lg border-card-border bg-surface-container text-[12px] focus:ring-primary/20"
+                  />
+                  {snapshotSearchQuery && (
+                    <button
+                      onClick={() => setSnapshotSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-on-surface"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  )}
+                </div>
+
+                {packageTypeCounts.dev > 0 && (
+                  <div className="flex items-center gap-1 bg-surface-container border border-card-border rounded-lg p-0.5 shrink-0">
+                    <button
+                      onClick={() => setFilterType("all")}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer",
+                        filterType === "all"
+                          ? "bg-surface-container-lowest text-on-surface shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-on-surface"
+                      )}
+                    >
+                      All ({packageTypeCounts.all})
+                    </button>
+                    <button
+                      onClick={() => setFilterType("dependency")}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer",
+                        filterType === "dependency"
+                          ? "bg-surface-container-lowest text-on-surface shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-on-surface"
+                      )}
+                    >
+                      Prod ({packageTypeCounts.prod})
+                    </button>
+                    <button
+                      onClick={() => setFilterType("devDependency")}
+                      className={cn(
+                        "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer",
+                        filterType === "devDependency"
+                          ? "bg-surface-container-lowest text-on-surface shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-on-surface"
+                      )}
+                    >
+                      Dev ({packageTypeCounts.dev})
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Packages List / Table */}
+              <div className="border border-card-border rounded-xl overflow-hidden flex-1 flex flex-col min-h-0 bg-surface-container/20">
+                {/* Table Header */}
+                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_90px_110px] gap-2 px-4 py-2 bg-surface-container/50 border-b border-card-border text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 text-left">
+                  <span>Package Name</span>
+                  <span>Saved Version</span>
+                  <span>Ecosystem</span>
+                  <span className="text-right pr-1">Type</span>
+                </div>
+
+                {/* Table Body (Scrollable) */}
+                <div className="overflow-y-auto divide-y divide-card-border/60 flex-1">
+                  {filteredSnapshotPackages.length > 0 ? (
+                    filteredSnapshotPackages.map((pkg: any, idx: number) => {
+                      const ecosystem = (pkg.ecosystem || pkg.source || (viewingSnapshot.environmentName?.toLowerCase().includes("venv") ? "pip" : "npm")).toLowerCase();
+                      const version = pkg.version || pkg.installedVersion || "—";
+                      const isDev = pkg.type === "devDependency";
+
+                      return (
+                        <div
+                          key={`${pkg.name}-${idx}`}
+                          className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_90px_110px] gap-2 px-4 py-2.5 items-center hover:bg-surface-container/40 transition-colors text-left"
+                        >
+                          {/* Name */}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="material-symbols-outlined text-[15px] text-muted-foreground shrink-0">
+                              {ecosystem === "pip" ? "terminal" : "inventory_2"}
+                            </span>
+                            <span className="text-[13px] font-medium text-on-surface truncate" title={pkg.name}>
+                              {pkg.name}
+                            </span>
+                            {pkg.status === "missing" && (
+                              <span className="text-[10px] text-amber-500 font-medium shrink-0" title="Missing from environment">
+                                (missing)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Version */}
+                          <div className="min-w-0">
+                            <span className="inline-block font-mono text-[11px] px-2 py-0.5 rounded bg-surface-container border border-card-border/80 text-on-surface truncate max-w-full">
+                              {version}
+                            </span>
+                          </div>
+
+                          {/* Ecosystem */}
+                          <div>
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border",
+                                ecosystem === "pip"
+                                  ? "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20"
+                                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                              )}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                              {ecosystem}
+                            </span>
+                          </div>
+
+                          {/* Type / Metadata */}
+                          <div className="flex items-center justify-end pr-1">
+                            {isDev ? (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-surface-container text-muted-foreground border border-card-border/60">
+                                devDependency
+                              </span>
+                            ) : pkg.type === "python" ? (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                                package
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                {pkg.type || "dependency"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="py-12 flex flex-col items-center justify-center text-center px-4">
+                      <span className="material-symbols-outlined text-[32px] text-muted-foreground opacity-40 mb-2">
+                        {snapshotSearchQuery ? "search_off" : "inventory_2"}
+                      </span>
+                      <p className="text-[13px] font-medium text-on-surface">
+                        {snapshotSearchQuery ? "No matching packages" : "No packages captured"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 max-w-xs">
+                        {snapshotSearchQuery
+                          ? `No packages matched "${snapshotSearchQuery}". Try a different search.`
+                          : "This snapshot does not contain any package entries."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <DialogFooter className="mt-4 pt-3 border-t border-card-border flex-row items-center justify-between sm:justify-between shrink-0">
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  Snapshot ID: <span className="text-on-surface font-semibold">{viewingSnapshot.id}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const idToRestore = viewingSnapshot.id;
+                      setViewingSnapshot(null);
+                      handleRestore(idToRestore);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all active:scale-95 cursor-pointer"
+                    style={{
+                      background: `${PALETTE.major}18`,
+                      color: PALETTE.major,
+                      border: `1px solid ${PALETTE.major}30`,
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">history</span>
+                    Restore Snapshot
+                  </button>
+                  <button
+                    onClick={() => setViewingSnapshot(null)}
+                    className="px-4 py-1.5 rounded-lg text-[12px] font-medium text-muted-foreground hover:bg-surface-container transition-all cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

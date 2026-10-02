@@ -16,7 +16,10 @@ async function loadBootstrap(store: ReturnType<typeof usePackageStore.getState>)
     if (environments?.length) store.setEnvironments(environments);
     if (packages?.length) {
       store.setPackages(packages);
-      store.setLastScanned(packages[0]?.lastChecked ?? Date.now());
+      const validLastChecked = packages.find((p: any) => typeof p.lastChecked === 'number' && p.lastChecked > 0)?.lastChecked;
+      if (validLastChecked) {
+        store.setLastScanned(validLastChecked);
+      }
     }
     return { cacheFresh: Boolean(cacheFresh && packages?.length) };
   }
@@ -28,9 +31,28 @@ async function loadBootstrap(store: ReturnType<typeof usePackageStore.getState>)
   if (envs?.length) store.setEnvironments(envs);
   if (cached?.length) {
     store.setPackages(cached);
-    store.setLastScanned(cached[0]?.lastChecked ?? Date.now());
+    const validLastChecked = cached.find((p: any) => typeof p.lastChecked === 'number' && p.lastChecked > 0)?.lastChecked;
+    if (validLastChecked) {
+      store.setLastScanned(validLastChecked);
+    }
   }
   return { cacheFresh: Boolean(cached?.length) };
+}
+
+/**
+ * Loads cached data from the local store/database so the UI can paint immediately
+ * without executing any scan, environment search, version checks, or network requests.
+ */
+export async function loadBootstrapData() {
+  const store = usePackageStore.getState();
+  try {
+    await loadBootstrap(store);
+    queryClient.invalidateQueries();
+  } catch (error) {
+    console.error("[BOOTSTRAP] Failed to load cached bootstrap data:", error);
+  } finally {
+    store.setScanStatus("idle");
+  }
 }
 
 async function refreshPackages(
@@ -101,10 +123,32 @@ async function refreshPackages(
 }
 
 export async function runAutoScan(options: ScanOptions = {}) {
+  const { force = false } = options;
+
+  // Gate automatic/background scanning:
+  // If force !== true (i.e. not an explicit user-initiated scan like "Scan Now" or "Allow & Start"),
+  // verify that background scanning permission has actually been granted!
+  if (!force) {
+    const api = (window as any).electronAPI;
+    if (api?.getSettings) {
+      try {
+        const settings = await api.getSettings();
+        if (settings?.backgroundPermission !== true) {
+          console.log("[AUTO-SCAN] Background scanning permission not granted (state:", settings?.backgroundPermission, "). Aborting automatic scan.");
+          usePackageStore.getState().setScanStatus("idle");
+          return;
+        }
+      } catch (err) {
+        console.warn("[AUTO-SCAN] Could not verify background permission:", err);
+        usePackageStore.getState().setScanStatus("idle");
+        return;
+      }
+    }
+  }
+
   if (scanInFlight) return scanInFlight;
 
   const store = usePackageStore.getState();
-  const { force = false } = options;
 
   scanInFlight = (async () => {
     store.setScanStatus("idle");
@@ -116,6 +160,15 @@ export async function runAutoScan(options: ScanOptions = {}) {
       if (cacheFresh && !force) {
         // Let the UI paint cached data, then refresh disk state in the background
         await new Promise((r) => setTimeout(r, 1500));
+        // Double-check permission in case it was revoked while waiting
+        const api = (window as any).electronAPI;
+        if (api?.getSettings) {
+          const s = await api.getSettings();
+          if (s?.backgroundPermission !== true) {
+            console.log("[AUTO-SCAN] Permission not granted. Skipping background package refresh.");
+            return;
+          }
+        }
         await refreshPackages(store, { checkVersions: false, rescanEnvironments: false });
         return;
       }

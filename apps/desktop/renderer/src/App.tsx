@@ -3,7 +3,7 @@ import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { appLocationHook, isFileProtocol } from "@/lib/appRouter";
 import { queryClient } from "@/lib/queryClient";
-import { runAutoScan } from "@/lib/autoScan";
+import { runAutoScan, loadBootstrapData } from "@/lib/autoScan";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
@@ -23,7 +23,31 @@ function Router() {
       window.location.hash = "/";
     }
 
-    runAutoScan();
+    const initStartup = async () => {
+      // 1. Paint cached database records so the dashboard renders immediately with existing data,
+      // without running any scans or triggering any scanning spinners.
+      await loadBootstrapData();
+
+      // 2. Gate automatic scanning on startup:
+      // ONLY trigger background scan if user has already granted permission.
+      // If permission is undecided (null) or denied (false), DO NOT scan!
+      const api = (window as any).electronAPI;
+      if (api?.getSettings) {
+        try {
+          const settings = await api.getSettings();
+          if (settings?.backgroundPermission === true) {
+            console.log("[STARTUP] Background scanning permission active. Running initial scan.");
+            runAutoScan();
+          } else {
+            console.log("[STARTUP] Background permission not granted or awaiting decision (state:", settings?.backgroundPermission, "). No scan started.");
+          }
+        } catch (e) {
+          console.warn("[STARTUP] Could not verify settings:", e);
+        }
+      }
+    };
+
+    initStartup();
 
     // Listen for live data-changed push from IPC bridge (Layer 2 socket/pipe)
     // Fired whenever the CLI writes to db.json while the GUI is open.
@@ -42,9 +66,17 @@ function Router() {
     // Listen for background-scan trigger from main process
     let unlistenAutoScan: (() => void) | undefined;
     if ((window as any).electronAPI?.onAutoScanTrigger) {
-      unlistenAutoScan = (window as any).electronAPI.onAutoScanTrigger(() => {
-        console.log('[SCHEDULER] Triggered background rescan');
-        runAutoScan();
+      unlistenAutoScan = (window as any).electronAPI.onAutoScanTrigger(async () => {
+        const api = (window as any).electronAPI;
+        if (api?.getSettings) {
+          const s = await api.getSettings();
+          if (s?.backgroundPermission === true) {
+            console.log('[SCHEDULER] Triggered background rescan');
+            runAutoScan();
+          } else {
+            console.log('[SCHEDULER] Background rescan skipped — permission not granted');
+          }
+        }
       });
     }
 

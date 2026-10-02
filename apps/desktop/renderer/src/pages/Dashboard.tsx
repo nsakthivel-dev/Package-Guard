@@ -29,8 +29,6 @@ const PALETTE = {
 
 const STATUS_ORDER: BarGroupKey[] = ["failed", "major", "minor", "patch", "healthy"];
 
-type DateRange = "7d" | "30d" | "90d";
-
 // ─── Custom stacked-pill chart with flow connectors ───────────────────────
 
 interface BarGroup {
@@ -317,8 +315,6 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
 // ─── Dashboard ────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [dateRange, setDateRange] = useState<DateRange>("30d");
-
   const { data: summary } = useGetDashboardSummary({
     query: { queryKey: getGetDashboardSummaryQueryKey(), refetchInterval: 10000 },
   });
@@ -331,34 +327,11 @@ export default function Dashboard() {
   const totalPkgs  = summary?.totalPackages ?? 0;
   const healthyPct = totalPkgs > 0 ? Math.round(((summary?.upToDate ?? 0) / totalPkgs) * 100) : 0;
 
-  const DATE_RANGES: { label: string; value: DateRange }[] = [
-    { label: "7 Days", value: "7d" },
-    { label: "30 Days", value: "30d" },
-    { label: "90 Days", value: "90d" },
-  ];
-
   return (
     <div className="space-y-5 max-w-full">
-
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4">
         <p className="text-[12px] text-muted-foreground">Package security overview across all environments</p>
-        <div className="flex items-center gap-1 bg-surface-container border border-card-border rounded-lg p-0.5">
-          {DATE_RANGES.map((r) => (
-            <button
-              key={r.value}
-              onClick={() => setDateRange(r.value)}
-              className={cn(
-                "px-3 py-1.5 text-[12px] font-medium rounded-md transition-all",
-                dateRange === r.value
-                  ? "bg-surface-container-lowest text-on-surface shadow-[var(--shadow-premium)]"
-                  : "text-muted-foreground hover:text-on-surface"
-              )}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* ── Stat cards ─────────────────────────────────────────────────────── */}
@@ -454,10 +427,13 @@ export default function Dashboard() {
       </div>
 
       {/* ── Bottom row ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4" style={{ alignItems: "start" }}>
 
         {/* Donut */}
-        <div className="xl:col-span-4 bg-surface-container-lowest border border-card-border rounded-xl p-5 shadow-[var(--shadow-premium)]">
+        <div
+          className="xl:col-span-4 bg-surface-container-lowest border border-card-border rounded-xl p-5 shadow-[var(--shadow-premium)]"
+          style={{ height: "fit-content", maxHeight: "fit-content", alignSelf: "start" }}
+        >
           <SectionHeader title="Status Distribution" subtitle="By package count" />
           <div className="flex items-center gap-4">
             <div className="relative w-[120px] h-[120px] shrink-0">
