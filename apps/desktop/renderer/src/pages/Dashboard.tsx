@@ -1,13 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Link } from "wouter";
 import {
   useGetDashboardSummary,
   useGetRecentActivity,
   useGetStatusBreakdown,
   getGetDashboardSummaryQueryKey,
+  getGetStatusBreakdownQueryKey,
   StatusBreakdown,
   HistoryEntry,
 } from "@packageguard/api-client-react";
+import { usePackageStore } from "@/store/usePackageStore";
 import { ecosystemIcon } from "@/lib/statusColors";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import {
@@ -27,7 +29,7 @@ const PALETTE = {
   unknown:  "#A5B4FC", // soft purple
 };
 
-const STATUS_ORDER: BarGroupKey[] = ["failed", "major", "minor", "patch", "healthy"];
+const STATUS_ORDER: BarGroupKey[] = ["unknown", "failed", "major", "minor", "patch", "healthy"];
 
 // ─── Custom stacked-pill chart with flow connectors ───────────────────────
 
@@ -38,6 +40,7 @@ interface BarGroup {
   minor: number;
   major: number;
   failed: number;
+  unknown?: number;
 }
 
 type BarGroupKey = Exclude<keyof BarGroup, "name">;
@@ -214,6 +217,7 @@ function buildBarGroups(breakdown: StatusBreakdown[] | undefined): BarGroup[] {
     minor: env.minor,
     major: env.major,
     failed: env.failed,
+    unknown: env.unknown ?? 0,
   }));
 }
 
@@ -221,7 +225,7 @@ function buildBarData(breakdown: StatusBreakdown[] | undefined) {
   if (!breakdown?.length) return [];
   return breakdown.map((env) => ({
     name: env.environmentName.length > 6 ? env.environmentName.slice(0, 6) : env.environmentName,
-    total: env.upToDate + env.patch + env.minor + env.major + env.failed + env.unknown,
+    total: env.upToDate + env.patch + env.minor + env.major + env.failed + (env.unknown ?? 0),
     healthy: env.upToDate,
   }));
 }
@@ -316,13 +320,43 @@ function SectionHeader({ title, subtitle, action }: { title: string; subtitle?: 
 
 export default function Dashboard() {
   const { data: summary } = useGetDashboardSummary({
-    query: { queryKey: getGetDashboardSummaryQueryKey(), refetchInterval: 10000 },
+    query: { queryKey: getGetDashboardSummaryQueryKey(), refetchInterval: 3000 },
   });
   const { data: activity, isLoading: activityLoading } = useGetRecentActivity({ limit: 8 });
-  const { data: breakdown } = useGetStatusBreakdown();
+  const { data: breakdown } = useGetStatusBreakdown({
+    query: { queryKey: getGetStatusBreakdownQueryKey(), refetchInterval: 3000 },
+  });
 
-  const barGroups  = buildBarGroups(breakdown);
-  const barData    = buildBarData(breakdown);
+  const storePackages = usePackageStore((s) => s.packages);
+  const storeEnvironments = usePackageStore((s) => s.environments);
+
+  // Compute live breakdown reactively from client store or server data
+  const effectiveBreakdown = useMemo(() => {
+    // If backend breakdown has non-zero package counts, prefer it
+    if (breakdown && breakdown.length > 0 && breakdown.some(b => (b.upToDate + b.patch + b.minor + b.major + b.failed + (b.unknown ?? 0)) > 0)) {
+      return breakdown;
+    }
+    // Otherwise fallback to live client store packages so the graphs show up immediately without restarting the app!
+    if (storePackages.length > 0 && storeEnvironments.length > 0) {
+      return storeEnvironments.map((env) => {
+        const pkgs = storePackages.filter((p) => p.environmentId === env.id || (p as any).envId === env.id);
+        return {
+          environmentId: env.id,
+          environmentName: env.name,
+          upToDate: pkgs.filter((p) => p.status === "up-to-date").length,
+          patch: pkgs.filter((p) => p.status === "patch").length,
+          minor: pkgs.filter((p) => p.status === "minor").length,
+          major: pkgs.filter((p) => p.status === "major").length,
+          failed: pkgs.filter((p) => p.status === "failed").length,
+          unknown: pkgs.filter((p) => !p.status || p.status === "unknown").length,
+        };
+      });
+    }
+    return breakdown || [];
+  }, [breakdown, storePackages, storeEnvironments]);
+
+  const barGroups  = buildBarGroups(effectiveBreakdown);
+  const barData    = buildBarData(effectiveBreakdown);
   const donutData  = buildDonutData(summary);
   const totalPkgs  = summary?.totalPackages ?? 0;
   const healthyPct = totalPkgs > 0 ? Math.round(((summary?.upToDate ?? 0) / totalPkgs) * 100) : 0;

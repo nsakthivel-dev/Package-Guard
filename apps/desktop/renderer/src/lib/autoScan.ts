@@ -84,6 +84,8 @@ async function refreshPackages(
   const allPackages = scanResults.flat();
   store.setPackages(allPackages);
   queryClient.invalidateQueries({ queryKey: ["/api/packages"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/dashboard/status-breakdown"] });
 
   if (options.checkVersions !== false && allPackages.length > 0) {
     store.setScanStatus("checking-versions");
@@ -104,6 +106,8 @@ async function refreshPackages(
     store.updatePackageVersions(versionResults);
     queryClient.invalidateQueries({ queryKey: ["/api/packages"] });
     queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/status-breakdown"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dashboard/recent-activity"] });
   }
 
   await api.saveScanCache(
@@ -120,6 +124,7 @@ async function refreshPackages(
 
   store.setScanStatus("idle");
   store.setLastScanned(Date.now());
+  queryClient.invalidateQueries();
 }
 
 export async function runAutoScan(options: ScanOptions = {}) {
