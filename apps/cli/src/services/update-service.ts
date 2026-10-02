@@ -8,7 +8,7 @@ import { createSnapshot, restoreSnapshot, getLatestSafetySnapshot } from "./snap
 import { scanProject } from "./scanner-service";
 import { verifyProject } from "./verify-service";
 import { sendCliEvent } from "../pipe-client";
-import { getOutdatedPackages, classifyUpdate } from "./package-service";
+import { getOutdatedPackages, classifyUpdate, getPackageDetails } from "./package-service";
 import { detectPackageManager } from "./project-service";
 
 export interface UpdateOptions {
@@ -91,8 +91,10 @@ export async function updateSinglePackage(
     };
   }
 
-  // Step 2: Determine package manager and install argument
+  // Step 2: Determine package manager, current version, and install argument
   const pm = project.packageManager || detectPackageManager(project.path);
+  const currentDetails = await getPackageDetails(project.path, packageName);
+  const fromVersion = currentDetails?.version || "current";
   const pkgArg = options.version ? `${packageName}@${options.version}` : packageName;
   let installArgs: string[];
 
@@ -117,13 +119,26 @@ export async function updateSinglePackage(
     insertHistory(db, {
       projectId: project.id,
       eventType: "UPDATE",
-      description: `Failed to update ${packageName}: ${execResult.stderr.slice(0, 150)}`,
-      detailsJson: JSON.stringify({ package: packageName, error: execResult.stderr, safetySnapshotId: safetySnapshot.id })
+      description: `Failed to update ${packageName} (${fromVersion} → ${options.version || "latest"}): ${execResult.stderr.slice(0, 150)}`,
+      detailsJson: JSON.stringify({
+        package: packageName,
+        projectName: project.name,
+        ecosystem: pm === "pip" ? "pip" : "npm",
+        fromVersion,
+        toVersion: options.version || "latest",
+        status: "FAILED",
+        error: execResult.stderr,
+        safetySnapshotId: safetySnapshot.id
+      })
     });
 
     await sendCliEvent("update", {
       projectId: project.id,
+      projectName: project.name,
       package: packageName,
+      ecosystem: pm === "pip" ? "pip" : "npm",
+      fromVersion,
+      toVersion: options.version || "latest",
       status: "FAILED",
       error: execResult.stderr,
       safetySnapshotId: safetySnapshot.id
@@ -148,13 +163,21 @@ export async function updateSinglePackage(
   // Step 5: Verify
   const verifyRes = await verifyProject(db, project.id, project.path);
 
+  const newDetails = await getPackageDetails(project.path, packageName);
+  const toVersion = newDetails?.version || options.version || "updated";
+
   // Step 6: Record history in SQLite
   insertHistory(db, {
     projectId: project.id,
     eventType: "UPDATE",
-    description: `Updated package ${packageName} to latest`,
+    description: `Updated package ${packageName} (${fromVersion} → ${toVersion})`,
     detailsJson: JSON.stringify({
       package: packageName,
+      projectName: project.name,
+      ecosystem: pm === "pip" ? "pip" : "npm",
+      fromVersion,
+      toVersion,
+      status: "SUCCESS",
       safetySnapshotId: safetySnapshot.id,
       verification: verifyRes.status,
       scanId: scanRes?.id
@@ -164,7 +187,11 @@ export async function updateSinglePackage(
   // Step 7: Notify Electron via Pipe
   await sendCliEvent("update", {
     projectId: project.id,
+    projectName: project.name,
     package: packageName,
+    ecosystem: pm === "pip" ? "pip" : "npm",
+    fromVersion,
+    toVersion,
     status: "SUCCESS",
     safetySnapshotId: safetySnapshot.id,
     verification: verifyRes.status

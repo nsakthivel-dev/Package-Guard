@@ -130,6 +130,52 @@ if (!gotTheLock) {
             touchProjectScan(sqliteDb, projId);
           } catch (_) {}
         }
+
+        // Handle project install / remove and package update events received over pipe
+        const cmd = request.command || request.payload?.command;
+        const innerPayload = request.payload?.payload || request.payload || {};
+        if (cmd === 'init') {
+          const projName = innerPayload.projectName || projId || 'Project';
+          const pm = innerPayload.packageManager || 'npm';
+          dbHandler.insertHistory({
+            packageName: projName,
+            ecosystem: pm === 'pip' ? 'pip' : 'npm',
+            environmentName: projName,
+            fromVersion: '-',
+            toVersion: 'installed',
+            status: 'success',
+            errorMessage: null,
+            note: `Project initialized: ${projName}`
+          });
+        } else if (cmd === 'remove') {
+          const projName = innerPayload.projectName || projId || 'Project';
+          const pm = innerPayload.packageManager || 'npm';
+          dbHandler.insertHistory({
+            packageName: projName,
+            ecosystem: pm === 'pip' ? 'pip' : 'npm',
+            environmentName: projName,
+            fromVersion: 'installed',
+            toVersion: 'removed',
+            status: 'success',
+            errorMessage: null,
+            note: `Project removed: ${projName}`
+          });
+        } else if (cmd === 'update') {
+          if (innerPayload.package) {
+            const isFailed = innerPayload.status === 'FAILED' || innerPayload.status === 'failed' || !!innerPayload.error;
+            dbHandler.insertHistory({
+              packageName: innerPayload.package,
+              ecosystem: innerPayload.ecosystem || 'npm',
+              environmentName: innerPayload.projectName || projId || 'Project',
+              fromVersion: innerPayload.fromVersion || 'unknown',
+              toVersion: innerPayload.toVersion || 'latest',
+              status: isFailed ? 'failed' : 'success',
+              errorMessage: isFailed ? (innerPayload.error || 'Update failed') : null,
+              note: isFailed ? `Failed to update ${innerPayload.package}` : `Updated ${innerPayload.package}`
+            });
+          }
+        }
+
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('core:data-changed', { source: 'pipe', request });
           mainWindow.webContents.send('projects:updated', { source: 'pipe', projectId: projId });
@@ -917,6 +963,16 @@ ipcMain.handle('dashboard:status-breakdown', async () => {
 ipcMain.handle('environments:create', (_, env) => {
   const id = `env-${Date.now()}`;
   dbHandler.insertEnvironment({ ...env, id });
+  dbHandler.insertHistory({
+    packageName: env.name,
+    ecosystem: env.type === 'pip' ? 'pip' : 'npm',
+    environmentName: env.name,
+    fromVersion: '-',
+    toVersion: 'installed',
+    status: 'success',
+    errorMessage: null,
+    note: `Project installed: ${env.name}`
+  });
   return dbHandler.getEnvironment(id);
 });
 
@@ -942,7 +998,22 @@ ipcMain.handle('environments:get', () => {
   return dbHandler.getEnvironments();
 });
 
-ipcMain.handle('environments:delete', (_, id) => dbHandler.deleteEnvironment(id));
+ipcMain.handle('environments:delete', (_, id) => {
+  const env = dbHandler.getEnvironment(id);
+  if (env) {
+    dbHandler.insertHistory({
+      packageName: env.name,
+      ecosystem: env.type === 'pip' ? 'pip' : 'npm',
+      environmentName: env.name,
+      fromVersion: 'installed',
+      toVersion: 'removed',
+      status: 'success',
+      errorMessage: null,
+      note: `Project removed: ${env.name}`
+    });
+  }
+  return dbHandler.deleteEnvironment(id);
+});
 
 ipcMain.handle('environments:scan', async (_, id) => {
   const env = dbHandler.getEnvironment(id);
@@ -1054,15 +1125,6 @@ ipcMain.handle('packages:get', (_, params) => {
 // Venv Handlers
 ipcMain.handle('venv:scan', async (_, rootDir) => {
   const venvs = await venvHandler.findVenvs(rootDir);
-  dbHandler.insertHistory({
-    packageName: 'Venv Scanner',
-    ecosystem: 'pip',
-    environmentName: 'System',
-    fromVersion: '-',
-    toVersion: '-',
-    status: 'success',
-    note: `Scanned ${rootDir} for venvs, found ${venvs.length}`
-  });
   return venvs;
 });
 
@@ -2009,62 +2071,144 @@ ipcMain.handle('history:get', (_, limit = 50) => {
   }
 
   const list = [];
+
+  // 1. Query SQLite history table: ONLY version updates, failed updates, project install/remove, package install/remove, restores
+  // NEVER show generic pg CLI command history (pg init, pg snapshot, pg scan, pg verify, pg clean, pg ping, etc.)
   if (sqliteDb) {
     try {
-      const recent = listRecentEvents(sqliteDb, limit);
-      for (const ev of recent) {
-        let cmd = ev.type;
-        let pkgName = cmd;
-        let fromVer = '';
-        let toVer = '';
-        let envName = 'CLI';
-        let errMsg = null;
+      const historyRows = sqliteDb.prepare(`
+        SELECT h.*, p.name as project_name, p.package_manager
+        FROM history h
+        LEFT JOIN projects p ON h.project_id = p.id
+        WHERE h.event_type IN ('UPDATE', 'INIT', 'REMOVE', 'INSTALL', 'UNINSTALL', 'RESTORE')
+        ORDER BY h.created_at DESC
+        LIMIT ?
+      `).all(limit);
+
+      for (const row of historyRows) {
+        let details = {};
         try {
-          const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
-          if (payload && payload.command) {
-            cmd = `pg ${payload.command}`;
-            pkgName = cmd;
-          }
-          if (payload && payload.projectId) envName = payload.projectId;
-          if (payload && (payload.status === 'FAILED' || payload.status === 'FAIL')) {
-            errMsg = payload.message || 'Operation failed';
-          }
-          if (payload && payload.filesScanned !== undefined) {
-            fromVer = `${payload.filesScanned} files`;
-            toVer = `${payload.packagesDetected ?? 0} pkgs`;
-          }
+          if (row.details_json) details = JSON.parse(row.details_json);
         } catch {}
 
-        // Delivery type is strictly LIVE or SYNCED
-        const delivery = ev.delivery_type === 'LIVE' ? 'LIVE' : 'SYNCED';
+        const envName = row.project_name || details.projectName || 'Project';
+        const isPip = row.package_manager === 'pip' || details.packageManager === 'pip';
+        const defaultEco = isPip ? 'pip' : 'npm';
 
-        list.push({
-          id: ev.id,
-          packageName: pkgName,
-          ecosystem: 'cli',
-          environmentName: envName,
-          fromVersion: fromVer,
-          toVersion: toVer,
-          status: delivery, // LIVE or SYNCED
-          errorMessage: errMsg,
-          updatedAt: ev.created_at || new Date().toISOString()
-        });
+        if (row.event_type === 'UPDATE') {
+          const isFailed = details.status === 'FAILED' || details.status === 'failed' || !!details.error;
+          list.push({
+            id: row.id,
+            packageName: details.package || 'package',
+            ecosystem: details.ecosystem || defaultEco,
+            environmentName: envName,
+            fromVersion: details.fromVersion || 'unknown',
+            toVersion: details.toVersion || 'latest',
+            status: isFailed ? 'failed' : 'success',
+            errorMessage: details.error || (isFailed ? row.description : null),
+            updatedAt: row.created_at
+          });
+        } else if (row.event_type === 'INIT') {
+          list.push({
+            id: row.id,
+            packageName: envName,
+            ecosystem: details.packageManager || defaultEco,
+            environmentName: envName,
+            fromVersion: '-',
+            toVersion: 'installed',
+            status: 'success',
+            errorMessage: null,
+            updatedAt: row.created_at
+          });
+        } else if (row.event_type === 'REMOVE') {
+          list.push({
+            id: row.id,
+            packageName: envName,
+            ecosystem: details.packageManager || defaultEco,
+            environmentName: envName,
+            fromVersion: 'installed',
+            toVersion: 'removed',
+            status: 'success',
+            errorMessage: null,
+            updatedAt: row.created_at
+          });
+        } else if (row.event_type === 'RESTORE') {
+          list.push({
+            id: row.id,
+            packageName: details.package || envName,
+            ecosystem: defaultEco,
+            environmentName: envName,
+            fromVersion: details.fromVersion || 'current',
+            toVersion: details.toVersion || details.version || 'restored',
+            status: 'success',
+            errorMessage: null,
+            updatedAt: row.created_at
+          });
+        } else if (row.event_type === 'INSTALL') {
+          list.push({
+            id: row.id,
+            packageName: details.package || 'package',
+            ecosystem: details.ecosystem || defaultEco,
+            environmentName: envName,
+            fromVersion: details.fromVersion || '-',
+            toVersion: details.toVersion || details.version || 'installed',
+            status: details.status === 'FAILED' ? 'failed' : 'success',
+            errorMessage: details.error || null,
+            updatedAt: row.created_at
+          });
+        } else if (row.event_type === 'UNINSTALL') {
+          list.push({
+            id: row.id,
+            packageName: details.package || 'package',
+            ecosystem: details.ecosystem || defaultEco,
+            environmentName: envName,
+            fromVersion: details.fromVersion || 'installed',
+            toVersion: 'removed',
+            status: details.status === 'FAILED' ? 'failed' : 'success',
+            errorMessage: details.error || null,
+            updatedAt: row.created_at
+          });
+        }
       }
     } catch (err) {
-      console.error('[MAIN] Error querying SQLite events for history:', err);
+      console.error('[MAIN] Error querying SQLite history table:', err);
     }
   }
 
-  // Also append any local package update entries
+  // 2. Also append local package update / install / remove entries from dbHandler
   try {
     const localHistory = dbHandler.getHistory(limit);
     if (Array.isArray(localHistory)) {
-      list.push(...localHistory);
+      // Filter out any CLI command items or internal tasks (e.g. Venv Scanner)
+      const filtered = localHistory.filter((item) => {
+        if (!item) return false;
+        if (item.ecosystem === 'cli') return false;
+        if (typeof item.packageName === 'string') {
+          const lower = item.packageName.toLowerCase();
+          if (lower.startsWith('pg ') || lower.includes('scanner') || lower === 'cli') {
+            return false;
+          }
+        }
+        return true;
+      });
+      list.push(...filtered);
     }
   } catch {}
 
-  list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  return list.slice(0, limit);
+  // 3. Deduplicate entries by package + environment + toVersion + timestamp bucket (5-sec window)
+  const seen = new Set();
+  const deduped = [];
+  for (const entry of list) {
+    const timeKey = Math.floor(new Date(entry.updatedAt).getTime() / 5000);
+    const key = `${entry.packageName}|${entry.environmentName}|${entry.toVersion}|${entry.status}|${timeKey}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduped.push(entry);
+    }
+  }
+
+  deduped.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  return deduped.slice(0, limit);
 });
 
 // Fast startup: environments + fresh cache in one IPC round-trip

@@ -2,6 +2,8 @@ import type BetterSqlite3 from "better-sqlite3";
 import { findProject } from "../services/project-service";
 import { listHistory, clearHistory } from "@package-guard/shared/repository";
 
+const ALLOWED_EVENTS = new Set(["UPDATE", "INIT", "REMOVE", "INSTALL", "UNINSTALL", "RESTORE"]);
+
 export async function executeHistory(
   db: BetterSqlite3.Database,
   targetDir: string,
@@ -20,14 +22,17 @@ export async function executeHistory(
   }
 
   const projectId = isProjectOnly && project ? project.id : undefined;
-  const history = listHistory(db, {
+  const rawHistory = listHistory(db, {
     projectId,
     todayOnly: isToday,
-    limit: 50
+    limit: 100
   });
 
+  // Only show version updates, failed updates, project install/remove, and package install/remove
+  const history = rawHistory.filter((h) => ALLOWED_EVENTS.has(h.event_type));
+
   if (history.length === 0) {
-    console.log("No history records found.\n");
+    console.log("No update or install/remove history records found.\n");
     return 0;
   }
 

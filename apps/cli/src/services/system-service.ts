@@ -42,14 +42,22 @@ export function getCliScriptPath(): string {
 export function installCliShim(): { success: boolean; installedAt: string; message: string } {
   const { preferredDir, shimPath, isWin } = getTargetShimPaths();
   const cliScript = getCliScriptPath();
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const programCliShim = path.join(localAppData, "Programs", "PackageGuard", "cli", isWin ? "pg.cmd" : "pg");
 
   try {
     if (isWin) {
       const content = `@echo off\r\nnode "${cliScript}" %*\r\n`;
       fs.writeFileSync(shimPath, content, "utf8");
+      if (fs.existsSync(path.dirname(programCliShim))) {
+        try { fs.writeFileSync(programCliShim, content, "utf8"); } catch {}
+      }
     } else {
       const content = `#!/usr/bin/env bash\nexec node "${cliScript}" "$@"\n`;
       fs.writeFileSync(shimPath, content, { encoding: "utf8", mode: 0o755 });
+      if (fs.existsSync(path.dirname(programCliShim))) {
+        try { fs.writeFileSync(programCliShim, content, { encoding: "utf8", mode: 0o755 }); } catch {}
+      }
     }
 
     return {
@@ -69,6 +77,8 @@ export function uninstallCliShim(): { success: boolean; uninstalledPaths: string
   const candidates = [
     path.join(localAppData, "Microsoft", "WindowsApps", "pg.cmd"),
     path.join(localAppData, "Microsoft", "WindowsApps", "pg.bat"),
+    path.join(localAppData, "Programs", "PackageGuard", "cli", "pg.cmd"),
+    path.join(localAppData, "Programs", "PackageGuard", "cli", "pg.bat"),
     path.join(getAppDataDir(), "bin", isWin ? "pg.cmd" : "pg"),
     path.join(os.homedir(), ".local", "bin", "pg")
   ];

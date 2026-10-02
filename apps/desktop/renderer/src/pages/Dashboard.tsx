@@ -523,7 +523,7 @@ export default function Dashboard() {
             </Link>
           </div>
           <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_80px_80px] gap-3 px-5 py-2 border-y border-card-border bg-surface-container/40">
-            {["Package","Ecosystem","Version","Status","Time"].map((h) => (
+            {["Package / Project","Ecosystem","Version","Status","Time"].map((h) => (
               <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
             ))}
           </div>
@@ -538,37 +538,52 @@ export default function Dashboard() {
                 <p className="text-[13px] font-medium text-muted-foreground">No activity yet</p>
               </div>
             ) : (
-              activity.map((entry: HistoryEntry) => (
-                <div key={entry.id} className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_80px_80px] gap-3 px-5 py-3 hover:bg-surface-container/50 transition-colors cursor-pointer group items-center">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-[15px]">
-                      {ecosystemIcon[entry.ecosystem] ?? "📦"}
+              activity.map((entry: HistoryEntry) => {
+                const isFailed = entry.status?.toLowerCase() === "failed";
+                const isSuccess = entry.status?.toLowerCase() === "success" || entry.status === "LIVE" || entry.status === "SYNCED";
+                const isRemoved = entry.toVersion === "removed";
+                const isInstalled = entry.toVersion === "installed";
+
+                return (
+                  <div key={entry.id} className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_80px_80px] gap-3 px-5 py-3 hover:bg-surface-container/50 transition-colors cursor-pointer group items-center">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-[15px]">
+                        {ecosystemIcon[entry.ecosystem] ?? "📦"}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[13px] font-semibold text-on-surface truncate group-hover:text-primary transition-colors">{entry.packageName}</span>
+                        {entry.errorMessage && (
+                          <span className="text-[10px] text-destructive truncate font-medium">
+                            {entry.errorMessage}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[13px] font-semibold text-on-surface truncate group-hover:text-primary transition-colors">{entry.packageName}</span>
+                    <span className="text-[12px] text-muted-foreground capitalize truncate">{entry.ecosystem}</span>
+                    <span className="text-[11px] font-mono text-muted-foreground truncate">
+                      {entry.fromVersion}<span className="text-muted-foreground/40 mx-1">→</span>
+                      <span className={cn(
+                        isRemoved ? "text-destructive font-semibold" :
+                        isInstalled ? "text-[#0f766e] font-semibold" : ""
+                      )}>
+                        {entry.toVersion}
+                      </span>
+                    </span>
+                    <span className={cn(
+                      "inline-flex items-center justify-center text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full w-fit",
+                      isSuccess
+                        ? "text-[#0f766e] bg-[#5EEAD4]/20 border border-[#5EEAD4]/30"
+                        : "bg-destructive/10 text-destructive border border-destructive/20"
+                    )}
+                    >
+                      {entry.status}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                      {formatRelativeTime(new Date(entry.updatedAt).getTime())}
+                    </span>
                   </div>
-                  <span className="text-[12px] text-muted-foreground capitalize truncate">{entry.ecosystem}</span>
-                  <span className="text-[11px] font-mono text-muted-foreground truncate">
-                    {entry.fromVersion}<span className="text-muted-foreground/40 mx-1">→</span>{entry.toVersion}
-                  </span>
-                  <span className={cn(
-                    "inline-flex items-center justify-center text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full w-fit",
-                    entry.status === "LIVE"
-                      ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                      : entry.status === "SYNCED"
-                      ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
-                      : entry.status === "success"
-                      ? "text-[#0f766e]"
-                      : "bg-destructive/10 text-destructive"
-                  )}
-                  style={entry.status === "success" ? { background: `${PALETTE.healthy}20` } : undefined}
-                  >
-                    {entry.status}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                    {formatRelativeTime(new Date(entry.updatedAt).getTime())}
-                  </span>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

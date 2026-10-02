@@ -1,6 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { findProject, isInitialized, untrackProject } from "../services/project-service";
 import { sendCliEvent } from "../pipe-client";
+import { insertHistory } from "@package-guard/shared/repository";
 
 export async function executeRemove(
   db: BetterSqlite3.Database,
@@ -16,14 +17,29 @@ export async function executeRemove(
 
   const projectName = project.name;
   const projectId = project.id;
+  const pm = project.packageManager || "npm";
 
   // Untrack from SQLite tracking without touching the actual project files on disk
   untrackProject(db, project);
+
+  // Record removal in history (with projectId: null so it survives project deletion)
+  insertHistory(db, {
+    projectId: null,
+    eventType: "REMOVE",
+    description: `Project removed: ${projectName}`,
+    detailsJson: JSON.stringify({
+      projectName,
+      projectPath: project.path,
+      packageManager: pm,
+      status: "UNTRACKED"
+    })
+  });
 
   await sendCliEvent("remove", {
     projectId,
     projectName,
     projectPath: project.path,
+    packageManager: pm,
     status: "UNTRACKED"
   }, projectId);
 

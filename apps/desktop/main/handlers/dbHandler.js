@@ -324,8 +324,30 @@ module.exports = {
   },
 
   // History
-  getHistory: (limit = 50) => store.history.slice(0, limit),
+  getHistory: (limit = 50) => {
+    // Return only actual version updates, failed updates, restores, and project/package install/remove
+    return (store.history || []).filter((item) => {
+      if (!item) return false;
+      if (item.ecosystem === 'cli') return false;
+      if (typeof item.packageName === 'string') {
+        const lower = item.packageName.toLowerCase();
+        if (lower.startsWith('pg ') || lower.includes('scanner') || lower === 'cli') {
+          return false;
+        }
+      }
+      return true;
+    }).slice(0, limit);
+  },
   insertHistory: (entry) => {
+    if (!entry) return;
+    // Safety check: never record generic pg cmd history or scanner tasks
+    if (entry.ecosystem === 'cli') return;
+    if (typeof entry.packageName === 'string') {
+      const lower = entry.packageName.toLowerCase();
+      if (lower.startsWith('pg ') || lower.includes('scanner') || lower === 'cli') {
+        return;
+      }
+    }
     const updatedAt = Date.now();
     // Use high-resolution timestamp or random suffix for IDs to avoid collisions in batches
     const id = Date.now() + Math.floor(Math.random() * 1000);
