@@ -812,6 +812,21 @@ function getStatus(installed, latest) {
 // Dashboard
 ipcMain.handle('dashboard:summary', async () => {
   const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return {
+      totalPackages: 0,
+      totalEnvironments: 0,
+      totalVenvs: 0,
+      upToDate: 0,
+      needsUpdate: 0,
+      majorUpdates: 0,
+      minorUpdates: 0,
+      patchUpdates: 0,
+      failedPackages: 0,
+      lastScanAt: null
+    };
+  }
+
   const includeVenvs = settings.includeVenvsInDashboard !== false;
   const envs = dbHandler.getEnvironments();
   const venvs = dbHandler.getVenvs();
@@ -858,6 +873,10 @@ ipcMain.handle('dashboard:summary', async () => {
 
 ipcMain.handle('dashboard:status-breakdown', async () => {
   const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return [];
+  }
+
   const includeVenvs = settings.includeVenvsInDashboard !== false;
   const envs = [...dbHandler.getEnvironments()];
   if (includeVenvs) {
@@ -902,7 +921,13 @@ ipcMain.handle('scan:environments', async () => {
   return dbHandler.getEnvironments();
 });
 
-ipcMain.handle('environments:get', () => dbHandler.getEnvironments());
+ipcMain.handle('environments:get', () => {
+  const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return [];
+  }
+  return dbHandler.getEnvironments();
+});
 
 ipcMain.handle('environments:delete', (_, id) => dbHandler.deleteEnvironment(id));
 
@@ -992,6 +1017,11 @@ ipcMain.handle('environments:scan', async (_, id) => {
 
 // Packages
 ipcMain.handle('packages:get', (_, params) => {
+  const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return [];
+  }
+
   const envId = typeof params === 'string' ? params : params?.environmentId;
   let pkgs = dbHandler.getPackages(envId);
 
@@ -1960,6 +1990,11 @@ ipcMain.handle('snapshots:restore', async (event, id) => {
 
 // History
 ipcMain.handle('history:get', (_, limit = 50) => {
+  const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return [];
+  }
+
   const list = [];
   if (sqliteDb) {
     try {
@@ -2022,6 +2057,15 @@ ipcMain.handle('history:get', (_, limit = 50) => {
 // Fast startup: environments + fresh cache in one IPC round-trip
 ipcMain.handle('bootstrap:get', () => {
   const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return {
+      environments: [],
+      packages: [],
+      cacheFresh: false,
+      cacheDurationHours: settings.cacheDurationHours ?? 6,
+    };
+  }
+
   const cacheHours = settings.cacheDurationHours ?? 6;
   const packages = dbHandler.getCachedPackages(cacheHours);
   return {
@@ -2035,6 +2079,9 @@ ipcMain.handle('bootstrap:get', () => {
 // Cache Handlers
 ipcMain.handle('cache:get', () => {
   const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return [];
+  }
   return dbHandler.getCachedPackages(settings.cacheDurationHours ?? 6);
 });
 
@@ -2052,6 +2099,11 @@ ipcMain.handle('cache:save', (_, packages) => {
  * Reads from packages/core/src/database.ts (db.json) via core.listProjectsCLI.
  */
 ipcMain.handle('projects:get', async () => {
+  const settings = dbHandler.getSettings();
+  if (settings.backgroundPermission !== true) {
+    return [];
+  }
+
   try {
     return await projectEnvHandler.listProjectEnvironments();
   } catch (e) {

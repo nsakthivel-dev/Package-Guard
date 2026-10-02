@@ -194,7 +194,7 @@ module.exports = {
     menuCategory:                       'Package Guard',
 
     // User data is managed cleanly
-    deleteAppDataOnUninstall:           false,
+    deleteAppDataOnUninstall:           true,
 
     // Custom helper macro for PATH CLI shim registration
     include:                            'build/installer.nsh',

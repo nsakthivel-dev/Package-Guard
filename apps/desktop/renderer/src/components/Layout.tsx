@@ -215,14 +215,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )}
 
 
-            {/* Notifications Bell */}
-            <button className="relative w-9 h-9 rounded-lg border border-card-border bg-surface-container-lowest flex items-center justify-center text-muted-foreground hover:text-on-surface hover:bg-muted transition-all">
-              <span className="material-symbols-outlined text-[18px]">
-                notifications
-              </span>
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary"></span>
-            </button>
-
             {/* Scan Now Primary Button */}
             <button
               onClick={handleScan}

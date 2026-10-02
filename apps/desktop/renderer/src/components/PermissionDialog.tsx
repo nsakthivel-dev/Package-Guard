@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { runAutoScan } from "@/lib/autoScan";
+import { runAutoScan, loadBootstrapData } from "@/lib/autoScan";
 import { usePackageStore } from "@/store/usePackageStore";
 
 // Palette token pulled from the Dashboard palette
@@ -49,8 +49,9 @@ export function PermissionDialog() {
     setShow(false);
 
     if (allowed) {
-      console.log("[PERMISSION] User granted permission. Starting background scanner.");
-      // Explicit user consent: start the scan now
+      console.log("[PERMISSION] User granted permission. Loading data and starting scanner.");
+      // Explicit user consent: load bootstrap data and start the scan now
+      await loadBootstrapData();
       runAutoScan({ force: true });
     } else {
       console.log("[PERMISSION] User declined permission. No scan started.");

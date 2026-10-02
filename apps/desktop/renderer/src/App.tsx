@@ -24,22 +24,19 @@ function Router() {
     }
 
     const initStartup = async () => {
-      // 1. Paint cached database records so the dashboard renders immediately with existing data,
-      // without running any scans or triggering any scanning spinners.
-      await loadBootstrapData();
-
-      // 2. Gate automatic scanning on startup:
-      // ONLY trigger background scan if user has already granted permission.
-      // If permission is undecided (null) or denied (false), DO NOT scan!
+      // Gate automatic data loading and scanning on startup:
+      // ONLY paint cached data and trigger scan if user has already granted permission.
+      // If permission is undecided (null) or denied (false), DO NOT load packages or start scan!
       const api = (window as any).electronAPI;
       if (api?.getSettings) {
         try {
           const settings = await api.getSettings();
           if (settings?.backgroundPermission === true) {
-            console.log("[STARTUP] Background scanning permission active. Running initial scan.");
+            console.log("[STARTUP] Background scanning permission active. Loading bootstrap data & running scan.");
+            await loadBootstrapData();
             runAutoScan();
           } else {
-            console.log("[STARTUP] Background permission not granted or awaiting decision (state:", settings?.backgroundPermission, "). No scan started.");
+            console.log("[STARTUP] Background permission not granted or awaiting decision (state:", settings?.backgroundPermission, "). No scan started and no bootstrap data loaded.");
           }
         } catch (e) {
           console.warn("[STARTUP] Could not verify settings:", e);

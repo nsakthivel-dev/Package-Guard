@@ -38,33 +38,18 @@
   DetailPrint "Removing Package Guard CLI from System PATH..."
   nsExec::ExecToLog 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\cli\path-manager.ps1" -Action uninstall -Dir "$INSTDIR\cli"'
 
-  ; Cleanly reset installation-specific permission state on uninstall
-  DetailPrint "Resetting installation permissions..."
-  Delete "$APPDATA\PackageGuard\config\permissions.json"
-  Delete "$APPDATA\PackageGuard\config\.first_launch_done"
-  Delete "$APPDATA\PackageGuard\config\.install_id"
-  Delete "$APPDATA\PackageGuard\install.ini"
-  Delete "$LOCALAPPDATA\Package Guard\config\permissions.json"
-  Delete "$LOCALAPPDATA\Package Guard\config\.first_launch_done"
+  DetailPrint "Resetting installation permissions and registry..."
   DeleteRegKey HKCU "Software\Package Guard"
   DeleteRegKey HKCU "Software\PackageGuard"
+  DeleteRegKey HKCU "Software\Classes\package-guard"
 
-  ; Clean Electron Chromium cache so reinstall doesn't run stale cached bytecode
-  DetailPrint "Cleaning Electron application cache..."
-  RMDir /r "$APPDATA\Package Guard\Cache"
-  RMDir /r "$APPDATA\Package Guard\Code Cache"
-  RMDir /r "$APPDATA\Package Guard\DawnGraphiteCache"
-  RMDir /r "$APPDATA\Package Guard\DawnWebGPUCache"
-  RMDir /r "$APPDATA\Package Guard\GPUCache"
-  RMDir /r "$APPDATA\Package Guard\blob_storage"
-  RMDir /r "$APPDATA\Package Guard\Session Storage"
-  RMDir /r "$APPDATA\Package Guard\data"
-  RMDir /r "$APPDATA\PackageGuard\temp"
-  RMDir /r "$APPDATA\PackageGuard\cache"
+  DetailPrint "Removing all Package Guard application data and cache..."
+  RMDir /r "$APPDATA\PackageGuard"
+  RMDir /r "$APPDATA\Package Guard"
   RMDir /r "$APPDATA\package-guard"
+  RMDir /r "$LOCALAPPDATA\PackageGuard"
+  RMDir /r "$LOCALAPPDATA\Package Guard"
+  RMDir /r "$LOCALAPPDATA\package-guard"
   RMDir /r "$LOCALAPPDATA\package-guard-updater"
-
-  ; DATA PRESERVATION:
-  ; User-owned project data in $APPDATA\PackageGuard\data, $LOCALAPPDATA\Package Guard\data,
-  ; and snapshots are preserved unless clean reset is selected.
+  Delete "$INSTDIR\install.ini"
 !macroend
