@@ -65,6 +65,10 @@ module.exports = {
 
   // ── Files packed into the asar (application code only) ────────────────────
   files: [
+    // Application icons
+    'build/icon.ico',
+    'build/icon.png',
+
     // Main process, handlers, server, logger, runtimePaths
     'apps/desktop/main/**/*',
     'apps/desktop/preload/**/*',
@@ -171,7 +175,7 @@ module.exports = {
 
     // Code signing configuration for local / CI builds
     forceCodeSigning:          false,
-    signAndEditExecutable:     false,
+    signAndEditExecutable:     true,
     verifyUpdateCodeSignature: false,
 
     // Execution level for installer and application
@@ -186,6 +190,10 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
     artifactName:                       'PackageGuard-Setup.${ext}',
     uninstallDisplayName:               'Package Guard',
+
+    installerIcon:                      'build/icon.ico',
+    uninstallerIcon:                    'build/icon.ico',
+    installerHeaderIcon:                'build/icon.ico',
 
     // Shortcuts
     createDesktopShortcut:              true,

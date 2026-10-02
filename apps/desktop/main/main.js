@@ -429,9 +429,14 @@ function createWindow() {
   const iconCandidate = [
     path.join(__dirname, '..', '..', '..', 'build', 'icon.ico'),
     path.join(__dirname, '..', '..', '..', 'build', 'icon.png'),
-    path.join(__dirname, '..', 'renderer', 'dist', 'logo.png'),
+    path.join(app.getAppPath(), 'build', 'icon.ico'),
+    path.join(app.getAppPath(), 'build', 'icon.png'),
     path.join(process.resourcesPath || '', 'build', 'icon.ico'),
-  ].find(p => fs.existsSync(p));
+    path.join(process.resourcesPath || '', 'icon.ico'),
+    path.join(__dirname, '..', 'renderer', 'dist', 'logo.png'),
+    path.join(app.getAppPath(), 'apps', 'desktop', 'renderer', 'dist', 'logo.png'),
+    path.join(__dirname, '..', '..', '..', 'apps', 'desktop', 'renderer', 'public', 'logo.png'),
+  ].find(p => p && fs.existsSync(p));
 
   mainWindow = new BrowserWindow({
     width: 1200,
