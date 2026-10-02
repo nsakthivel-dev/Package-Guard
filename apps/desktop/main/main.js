@@ -225,8 +225,13 @@ if (!gotTheLock) {
 
 function createTray() {
   if (tray) return;
-  // Simple blue shield icon (base64)
-  const icon = nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5gMWEiE3C8v3AAAAXUlEQVQ4y2NgGAWjYBSMAtIAHxsDA8N/Bv6vDAwMf6A0K2EA2MCE/w0MDAz/oTTI6f8MDAz/IeIgA6B+gBr9H8YmXgOwGfSfgYEBpgaXAUz/Gf4j0yD7YBSAAtIAAI6EE6S7uX0mAAAAAElFTkSuQmCC');
+  const logoPath = [
+    path.join(__dirname, '..', '..', '..', 'build', 'icon.png'),
+    path.join(__dirname, '..', 'renderer', 'dist', 'logo.png'),
+  ].find(p => fs.existsSync(p));
+  const icon = logoPath
+    ? nativeImage.createFromPath(logoPath)
+    : nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5gMWEiE3C8v3AAAAXUlEQVQ4y2NgGAWjYBSMAtIAHxsDA8N/Bv6vDAwMf6A0K2EA2MCE/w0MDAz/oTTI6f8MDAz/IeIgA6B+gBr9H8YmXgOwGfSfgYEBpgaXAUz/Gf4j0yD7YBSAAtIAAI6EE6S7uX0mAAAAAElFTkSuQmCC');
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show Package Guard', click: () => {
