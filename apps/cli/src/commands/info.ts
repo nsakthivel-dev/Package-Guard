@@ -4,7 +4,8 @@ import { executePackage } from "./package";
 export async function executeInfo(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
-  return executePackage(db, targetDir, args);
+  return executePackage(db, targetDir, args, isJson);
 }

@@ -2,20 +2,28 @@ import type BetterSqlite3 from "better-sqlite3";
 import { findProject, isInitialized } from "../services/project-service";
 import { runSecurityAudit } from "../services/security-service";
 import { sendCliEvent } from "../pipe-client";
+import { outputSuccess, outputError } from "../output";
 
 export async function executeAudit(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  _args: string[],
+  isJson: boolean = false
 ): Promise<number> {
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
+    if (isJson) {
+      outputError("Package Guard has not been initialized in this directory.", "NOT_INITIALIZED");
+    } else {
+      console.error("Error: Package Guard has not been initialized in this directory.\n");
+    }
     return 3;
   }
 
-  console.log(`Auditing dependencies for '${project.name}'...\n`);
+  if (!isJson) {
+    console.log(`Auditing dependencies for '${project.name}'...\n`);
+  }
   const report = await runSecurityAudit(db, project);
 
   await sendCliEvent("audit", {
@@ -25,6 +33,11 @@ export async function executeAudit(
     summary: report.summary,
     vulnerabilitiesCount: report.vulnerabilities.length
   }, project.id);
+
+  if (isJson) {
+    outputSuccess(report);
+    return 0;
+  }
 
   if (report.status === "UNAVAILABLE") {
     console.log(report.message || "Security audit data unavailable for this project/environment.\n");

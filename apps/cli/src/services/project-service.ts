@@ -70,6 +70,186 @@ export interface InitResult {
   project: Project;
   alreadyInitialized: boolean;
   packageManager: string;
+  packageGuardMdCreated?: boolean;
+  agentsMdCreated?: boolean;
+  agentsMdUpdated?: boolean;
+}
+
+export function generatePackageGuardMdContent(projectName: string, packageManager: string): string {
+  return `# PackageGuard AI Instructions
+
+PackageGuard (\`pg\`) is the dependency-state management tool for this project.
+
+It allows developers and AI coding agents to inspect, track, snapshot, compare, verify, and restore the project's dependency state.
+
+## Purpose
+
+Use PackageGuard when working with changes that may affect:
+
+- dependencies
+- package versions
+- lockfiles
+- installed packages
+- dependency trees
+- package configuration
+- dependency-related project state
+
+## AI Workflow
+
+When modifying or updating dependencies, follow this workflow:
+
+1. **Inspect Current State**: Check dependency status and verify health.
+   \`\`\`bash
+   pg status --json
+   pg scan --json
+   \`\`\`
+2. **Create Baseline Safety Snapshot**: Always snapshot prior to risky changes.
+   \`\`\`bash
+   pg snapshot create "Before dependency modification" --json
+   \`\`\`
+3. **Perform Development Work**: Install, remove, or upgrade packages using the project package manager (${packageManager}).
+4. **Inspect Changes**: Compare current filesystem state against the baseline.
+   \`\`\`bash
+   pg changes --json
+   pg diff --json
+   \`\`\`
+5. **Verify and Health Check**: Ensure files and lockfiles are consistent and intact.
+   \`\`\`bash
+   pg verify --json
+   pg doctor --json
+   \`\`\`
+6. **Recovery if Issues Arise**: If dependency modifications break the build or tests, roll back safely.
+   \`\`\`bash
+   pg rollback --json
+   # Or restore a specific snapshot
+   pg snapshot restore <snapshotId> -y --json
+   \`\`\`
+
+## Command Discovery
+
+Use the CLI help system to discover all available commands, options, and arguments:
+
+\`\`\`bash
+pg help
+pg help <command>
+\`\`\`
+
+The CLI remains the authoritative source for currently available commands.
+
+## Machine-Readable Output
+
+AI agents should prefer structured JSON output by passing \`--json\` to commands:
+
+\`\`\`bash
+pg status --json
+pg packages --json
+pg diff --json
+\`\`\`
+
+Machine-readable output is:
+- Valid JSON written to \`stdout\`.
+- Free from ANSI color codes, spinners, and ASCII banners.
+- Accompanied by diagnostic or progress notes on \`stderr\` when applicable.
+- Standardized with clear success/error structures and predictable exit codes.
+
+## Non-Interactive Usage
+
+AI agents run non-interactively in shell environments. Destructive operations (such as \`snapshot restore\` and \`snapshot delete\`) require confirmation:
+- Use the non-interactive confirmation flag \`-y\` (or \`--yes\`, \`--force\`).
+- If an agent omits confirmation flags in non-interactive or JSON mode, the CLI returns a structured error and non-zero exit code instead of hanging.
+
+\`\`\`bash
+pg snapshot restore <id> -y --json
+pg snapshot delete <id> -y --json
+\`\`\`
+
+## Safety
+
+Before any potentially destructive operation:
+1. Inspect the current dependency state.
+2. Ensure a recent recoverable snapshot exists (\`pg snapshot list --json\`).
+3. Verify project integrity after state restoration.
+
+## Recovery
+
+To recover from problematic dependency changes:
+1. Inspect recorded snapshots: \`pg snapshot list --json\`.
+2. Inspect the exact differences: \`pg diff <snapshotId> --json\`.
+3. Restore the target snapshot: \`pg snapshot restore <snapshotId> -y --json\`.
+4. Re-run tests and project build.
+
+## Important Rules
+
+- Use the \`pg\` CLI exclusively through normal shell commands.
+- Do not modify the PackageGuard SQLite database directly.
+- Do not modify internal files in \`.packageguard/\` unnecessarily.
+- Do not delete PackageGuard snapshots or state files manually.
+- Do not bypass PackageGuard by inventing duplicate dependency tracking mechanisms.
+- Prefer \`--json\` output for programmatic parsing.
+- Consult \`pg help <command>\` whenever parameter usage is uncertain.
+- Preserve existing project configuration and functionality.
+`;
+}
+
+export function ensurePackageGuardMd(projectDir: string, projectName: string, packageManager: string): boolean {
+  const markerDir = path.join(projectDir, ".packageguard");
+  fs.mkdirSync(markerDir, { recursive: true });
+  const mdPath = path.join(markerDir, "PACKAGEGUARD.md");
+
+  if (fs.existsSync(mdPath)) {
+    try {
+      const existing = fs.readFileSync(mdPath, "utf8");
+      if (existing.trim().length > 0 && existing.includes("PackageGuard")) {
+        return false; // preserved
+      }
+    } catch {
+      // fallback to writing
+    }
+  }
+
+  const content = generatePackageGuardMdContent(projectName, packageManager);
+  fs.writeFileSync(mdPath, content, "utf8");
+  return true;
+}
+
+export const AGENTS_MD_SECTION = `# PackageGuard
+
+This project uses PackageGuard (\`pg\`) for dependency-state management.
+
+Before making significant dependency changes, inspect the current state with PackageGuard and create a recoverable snapshot when appropriate.
+
+Read:
+
+    .packageguard/PACKAGEGUARD.md
+
+for the complete PackageGuard AI instructions.
+
+Use the existing \`pg\` CLI through normal shell commands.
+
+Do not create a separate PackageGuard API, server, plugin, or dependency-management mechanism.
+`;
+
+export function ensureAgentsMd(projectDir: string): { created: boolean; updated: boolean } {
+  const agentsPath = path.join(projectDir, "AGENTS.md");
+
+  if (!fs.existsSync(agentsPath)) {
+    fs.writeFileSync(agentsPath, AGENTS_MD_SECTION, "utf8");
+    return { created: true, updated: false };
+  }
+
+  try {
+    const existing = fs.readFileSync(agentsPath, "utf8");
+    if (existing.includes("# PackageGuard") || existing.includes("PackageGuard (`pg`)") || existing.includes("PACKAGEGUARD.md")) {
+      return { created: false, updated: false };
+    }
+
+    const separator = existing.endsWith("\n\n") ? "" : existing.endsWith("\n") ? "\n" : "\n\n";
+    const updatedContent = existing + separator + AGENTS_MD_SECTION;
+    fs.writeFileSync(agentsPath, updatedContent, "utf8");
+    return { created: false, updated: true };
+  } catch {
+    return { created: false, updated: false };
+  }
 }
 
 export function initializeProject(
@@ -87,10 +267,17 @@ export function initializeProject(
     if (pm && existing.package_manager !== pm) {
       setProjectPackageManager(db, existing.id, pm);
     }
+    const resolvedPm = existing.package_manager || pm || "npm";
+    const pgMdCreated = ensurePackageGuardMd(normalizedPath, existing.name, resolvedPm);
+    const agentsResult = ensureAgentsMd(normalizedPath);
+
     return {
       project: existing,
       alreadyInitialized: true,
-      packageManager: existing.package_manager || pm
+      packageManager: resolvedPm,
+      packageGuardMdCreated: pgMdCreated,
+      agentsMdCreated: agentsResult.created,
+      agentsMdUpdated: agentsResult.updated
     };
   }
 
@@ -141,10 +328,17 @@ export function initializeProject(
 
   setProjectPackageManager(db, projectId, pm);
 
+  // Generate AI instructions
+  const pgMdCreated = ensurePackageGuardMd(normalizedPath, projectName, pm);
+  const agentsResult = ensureAgentsMd(normalizedPath);
+
   return {
     project: { ...project, package_manager: pm },
     alreadyInitialized: false,
-    packageManager: pm
+    packageManager: pm,
+    packageGuardMdCreated: pgMdCreated,
+    agentsMdCreated: agentsResult.created,
+    agentsMdUpdated: agentsResult.updated
   };
 }
 

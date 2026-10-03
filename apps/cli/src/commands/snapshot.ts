@@ -10,43 +10,52 @@ import { executeSnapshotImport } from "./snapshot-import";
 import { insertHistory } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeSnapshot(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
-  const sub = args[0]?.toLowerCase();
-  const subArgs = args.slice(1);
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
+  const sub = cleanArgs[0]?.toLowerCase();
+  const subArgs = cleanArgs.slice(1);
 
   if (sub === "list") {
-    return executeSnapshotList(db, targetDir, subArgs);
+    return executeSnapshotList(db, targetDir, subArgs, jsonMode);
   }
   if (sub === "show") {
-    return executeSnapshotShow(db, targetDir, subArgs);
+    return executeSnapshotShow(db, targetDir, subArgs, jsonMode);
   }
   if (sub === "restore") {
-    return executeSnapshotRestore(db, targetDir, subArgs);
+    return executeSnapshotRestore(db, targetDir, subArgs, jsonMode);
   }
   if (sub === "delete") {
-    return executeSnapshotDelete(db, targetDir, subArgs);
+    return executeSnapshotDelete(db, targetDir, subArgs, jsonMode);
   }
   if (sub === "export") {
-    return executeSnapshotExport(db, targetDir, subArgs);
+    return executeSnapshotExport(db, targetDir, subArgs, jsonMode);
   }
   if (sub === "import") {
-    return executeSnapshotImport(db, targetDir, subArgs);
+    return executeSnapshotImport(db, targetDir, subArgs, jsonMode);
   }
 
   // Handle "create" or default snapshot creation
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "snapshot",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
-  const nameArgs = sub === "create" ? subArgs : args;
+  const nameArgs = sub === "create" ? subArgs : cleanArgs;
   const name = nameArgs.length > 0 ? nameArgs.join(" ") : undefined;
 
   const snapshot = await createSnapshot(db, project.id, projectDir, name);
@@ -69,13 +78,18 @@ export async function executeSnapshot(
     createdAt: snapshot.created_at
   }, project.id);
 
-  console.log("Snapshot created\n");
-  console.log(`ID:       ${snapshot.id}`);
-  console.log(`Name:     ${snapshot.name}`);
-  console.log(`Project:  ${project.name}`);
-  console.log(`Files:    ${snapshot.file_count}`);
-  console.log(`Packages: ${snapshot.package_count}`);
-  console.log(`Status:   ${snapshot.status}\n`);
-
-  return 0;
+  return outputSuccess(
+    "snapshot",
+    snapshot,
+    jsonMode,
+    () => {
+      console.log("Snapshot created\n");
+      console.log(`ID:       ${snapshot.id}`);
+      console.log(`Name:     ${snapshot.name}`);
+      console.log(`Project:  ${project.name}`);
+      console.log(`Files:    ${snapshot.file_count}`);
+      console.log(`Packages: ${snapshot.package_count}`);
+      console.log(`Status:   ${snapshot.status}\n`);
+    }
+  );
 }

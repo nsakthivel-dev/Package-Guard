@@ -4,22 +4,48 @@ import { scanProject } from "../services/scanner-service";
 import { insertScan, insertHistory } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess } from "../output";
+
 export async function executeInit(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
-  const customName = args[0];
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
+  const customName = cleanArgs[0];
 
   const result = initializeProject(db, targetDir, customName);
 
   if (result.alreadyInitialized) {
-    console.log("Package Guard is already initialized for this project.\n");
-    console.log(`Project: ${result.project.name}`);
-    console.log(`Path: ${result.project.path}`);
-    console.log(`Package Manager: ${result.packageManager || "npm"}`);
-    console.log(`Status: READY`);
-    return 0;
+    return outputSuccess(
+      "init",
+      {
+        project: {
+          id: result.project.id,
+          name: result.project.name,
+          path: result.project.path,
+          packageManager: result.packageManager || "npm"
+        },
+        alreadyInitialized: true,
+        packageManager: result.packageManager || "npm",
+        instructions: {
+          packageGuardMd: true,
+          agentsMd: true
+        },
+        status: "READY"
+      },
+      jsonMode,
+      () => {
+        console.log("Package Guard is already initialized for this project.\n");
+        console.log(`Project: ${result.project.name}`);
+        console.log(`Path: ${result.project.path}`);
+        console.log(`Package Manager: ${result.packageManager || "npm"}`);
+        console.log(`Status: READY`);
+        console.log(`AI Instructions: .packageguard/PACKAGEGUARD.md, AGENTS.md verified`);
+      }
+    );
   }
 
   // Perform initial scan
@@ -63,15 +89,36 @@ export async function executeInit(
     status: "READY"
   }, result.project.id);
 
-  console.log("Package Guard initialized\n");
-  console.log(`Project: ${result.project.name}`);
-  console.log(`Path: ${result.project.path}`);
-  console.log(`Package Manager: ${result.packageManager}`);
-  if (scanRes) {
-    console.log(`Packages Detected: ${scanRes.packagesDetected}`);
-  }
-  console.log(`Status: READY`);
-
-  return 0;
+  return outputSuccess(
+    "init",
+    {
+      project: {
+        id: result.project.id,
+        name: result.project.name,
+        path: result.project.path,
+        packageManager: result.packageManager
+      },
+      alreadyInitialized: false,
+      packageManager: result.packageManager,
+      packagesDetected: scanRes?.packagesDetected ?? 0,
+      instructions: {
+        packageGuardMd: true,
+        agentsMd: true
+      },
+      status: "READY"
+    },
+    jsonMode,
+    () => {
+      console.log("Package Guard initialized\n");
+      console.log(`Project: ${result.project.name}`);
+      console.log(`Path: ${result.project.path}`);
+      console.log(`Package Manager: ${result.packageManager}`);
+      if (scanRes) {
+        console.log(`Packages Detected: ${scanRes.packagesDetected}`);
+      }
+      console.log(`Status: READY`);
+      console.log(`AI Instructions: Created .packageguard/PACKAGEGUARD.md, AGENTS.md`);
+    }
+  );
 }
 

@@ -1,20 +1,37 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { findProject, isInitialized } from "../services/project-service";
 import { runSecurityAudit } from "../services/security-service";
+import { outputSuccess, outputError } from "../output";
 
 export async function executeVulnerabilities(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  _args: string[],
+  isJson: boolean = false
 ): Promise<number> {
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
+    if (isJson) {
+      outputError("Package Guard has not been initialized in this directory.", "NOT_INITIALIZED");
+    } else {
+      console.error("Error: Package Guard has not been initialized in this directory.\n");
+    }
     return 3;
   }
 
   const report = await runSecurityAudit(db, project);
+
+  if (isJson) {
+    outputSuccess({
+      projectId: project.id,
+      projectName: project.name,
+      status: report.status,
+      summary: report.summary,
+      vulnerabilities: report.vulnerabilities
+    });
+    return 0;
+  }
 
   if (report.status === "UNAVAILABLE") {
     console.log(report.message || "Vulnerability data unavailable.\n");

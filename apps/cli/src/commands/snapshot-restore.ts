@@ -26,37 +26,65 @@ function askConfirmation(question: string): Promise<boolean> {
   });
 }
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeSnapshotRestore(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "snapshot_restore",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
-  const nonFlagArgs = args.filter((a) => !a.startsWith("-"));
-  const isForced = args.some((a) => a === "-y" || a === "--yes" || a === "--force");
+  const nonFlagArgs = cleanArgs.filter((a) => !a.startsWith("-"));
+  const isForced = cleanArgs.some((a) => a === "-y" || a === "--yes" || a === "--force");
 
   const snapshotId = nonFlagArgs[0];
   if (!snapshotId) {
-    console.error("Error: Snapshot ID is required.");
-    console.error("Usage: pg snapshot restore <id> [-y]\n");
-    return 2;
+    return outputError(
+      "snapshot_restore",
+      "ARGUMENT_REQUIRED",
+      "Snapshot ID is required. Usage: pg snapshot restore <id> [-y]",
+      2,
+      jsonMode
+    );
   }
 
   // Step 1: Validate snapshot
   const { snapshot } = getSnapshot(db, snapshotId);
   if (!snapshot) {
-    console.error(`Error: Snapshot '${snapshotId}' not found.\n`);
-    return 4;
+    return outputError(
+      "snapshot_restore",
+      "SNAPSHOT_NOT_FOUND",
+      `Snapshot '${snapshotId}' not found.`,
+      4,
+      jsonMode
+    );
   }
 
   if (!isForced) {
+    if (jsonMode) {
+      return outputError(
+        "snapshot_restore",
+        "CONFIRMATION_REQUIRED",
+        `Restoring snapshot '${snapshot.id}' will overwrite current working files. Pass -y or --yes flag to confirm.`,
+        2,
+        jsonMode
+      );
+    }
+
     console.log(`This operation will restore files from snapshot '${snapshot.name}' (${snapshot.id}).`);
     const confirmed = await askConfirmation("Continue? [y/N] ");
     if (!confirmed) {
@@ -106,14 +134,36 @@ export async function executeSnapshotRestore(
       verificationStatus: verify.status
     }, project.id);
 
-    console.log(`\nSnapshot '${snapshot.id}' restored successfully.`);
-    console.log(`Files restored:         ${restoredFiles}`);
-    console.log(`Safety snapshot created:${safety.id}`);
-    console.log(`Verification status:    ${verify.status}\n`);
-
-    return 0;
+    return outputSuccess(
+      "snapshot_restore",
+      {
+        snapshotId: snapshot.id,
+        snapshotName: snapshot.name,
+        projectId: project.id,
+        projectName: project.name,
+        safetySnapshotId: safety.id,
+        restoredFiles,
+        scanResult: {
+          filesScanned: scan.filesScanned,
+          changesDetected: scan.changesDetected
+        },
+        verificationStatus: verify.status
+      },
+      jsonMode,
+      () => {
+        console.log(`\nSnapshot '${snapshot.id}' restored successfully.`);
+        console.log(`Files restored:         ${restoredFiles}`);
+        console.log(`Safety snapshot created:${safety.id}`);
+        console.log(`Verification status:    ${verify.status}\n`);
+      }
+    );
   } catch (err) {
-    console.error(`\nFailed to restore snapshot: ${err instanceof Error ? err.message : err}\n`);
-    return 1;
+    return outputError(
+      "snapshot_restore",
+      "RESTORE_FAILED",
+      `Failed to restore snapshot: ${err instanceof Error ? err.message : String(err)}`,
+      1,
+      jsonMode
+    );
   }
 }

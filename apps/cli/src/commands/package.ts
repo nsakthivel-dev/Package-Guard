@@ -4,31 +4,49 @@ import { getPackageDetails } from "../services/package-service";
 import { listSecurityAdvisories } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executePackage(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "package",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
-  const packageName = args[0];
+  const packageName = cleanArgs[0];
   if (!packageName) {
-    console.error("Error: Package name is required.");
-    console.error("Usage: pg package <name>\n");
-    return 2;
+    return outputError(
+      "package",
+      "ARGUMENT_REQUIRED",
+      "Package name is required. Usage: pg package <name>",
+      2,
+      jsonMode
+    );
   }
 
   const details = await getPackageDetails(projectDir, packageName);
 
   if (!details) {
-    console.error(`Package not found: '${packageName}'\n`);
-    return 4;
+    return outputError(
+      "package",
+      "PACKAGE_NOT_FOUND",
+      `Package not found: '${packageName}'`,
+      4,
+      jsonMode
+    );
   }
 
   // Security advisories
@@ -46,21 +64,31 @@ export async function executePackage(
     advisories
   }, project.id);
 
-  console.log(`Package Details: ${details.name}\n`);
-  console.log(`Current Version:     ${details.version}`);
-  console.log(`Declared Version:    ${details.declaredVersion || details.version}`);
-  console.log(`Latest Version:      ${details.latestVersion || details.version}`);
-  console.log(`Dependency Type:     ${isDirect ? `Direct (${details.type})` : `Indirect (${details.type})`}`);
-  console.log(`Package Location:    ${details.location || "N/A"}`);
-  console.log(`Update Available:    ${updateAvailable}`);
-  console.log(`Security Advisories: ${advisories.length === 0 ? "None detected" : `${advisories.length} advisory found`}`);
+  return outputSuccess(
+    "package",
+    {
+      package: details,
+      isDirect,
+      advisories,
+      updateAvailable: Boolean(details.latestVersion && details.latestVersion !== details.version)
+    },
+    jsonMode,
+    () => {
+      console.log(`Package Details: ${details.name}\n`);
+      console.log(`Current Version:     ${details.version}`);
+      console.log(`Declared Version:    ${details.declaredVersion || details.version}`);
+      console.log(`Latest Version:      ${details.latestVersion || details.version}`);
+      console.log(`Dependency Type:     ${isDirect ? `Direct (${details.type})` : `Indirect (${details.type})`}`);
+      console.log(`Package Location:    ${details.location || "N/A"}`);
+      console.log(`Update Available:    ${updateAvailable}`);
+      console.log(`Security Advisories: ${advisories.length === 0 ? "None detected" : `${advisories.length} advisory found`}`);
 
-  if (advisories.length > 0) {
-    for (const a of advisories) {
-      console.log(`  - [${a.severity}] ${a.title || "Vulnerability"} (fixed in: ${a.fixed_in || "N/A"})`);
+      if (advisories.length > 0) {
+        for (const a of advisories) {
+          console.log(`  - [${a.severity}] ${a.title || "Vulnerability"} (fixed in: ${a.fixed_in || "N/A"})`);
+        }
+      }
+      console.log();
     }
-  }
-  console.log();
-
-  return 0;
+  );
 }

@@ -1,12 +1,34 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { listConfig } from "@package-guard/shared/repository";
+import { outputSuccess } from "../output";
 
 export async function executeSettings(
   db: BetterSqlite3.Database,
   _targetDir: string,
-  _args: string[]
+  _args: string[],
+  isJson: boolean = false
 ): Promise<number> {
   const all = listConfig(db);
+
+  if (isJson) {
+    outputSuccess({
+      automationAndSafety: {
+        autoScan: all.autoScan === "true",
+        safeMode: all.safeMode === "true",
+        cacheDurationHours: Number(all.cacheDurationHours || "6")
+      },
+      ipcAndDesktopIntegration: {
+        notifyElectron: all.notifyElectron === "true",
+        concurrencyLimit: Number(all.concurrencyLimit || "5")
+      },
+      diagnosticsAndTelemetry: {
+        logLevel: all.logLevel || "info",
+        telemetry: all.telemetry === "true"
+      },
+      allSettings: all
+    });
+    return 0;
+  }
 
   console.log("Package Guard Settings Summary\n");
 

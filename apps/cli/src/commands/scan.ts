@@ -6,24 +6,32 @@ import { scanProject } from "../services/scanner-service";
 import { insertScan, insertHistory } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeScan(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "scan",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
   const isDeep = args.includes("--deep");
   const isForce = args.includes("--force");
   const isWatch = args.includes("--watch");
 
-  const runSingleScan = async (): Promise<void> => {
+  const runSingleScan = async (): Promise<number> => {
     const result = await scanProject(db, project.id, projectDir, project.name, {
       deep: isDeep,
       force: isForce
@@ -72,16 +80,23 @@ export async function executeScan(
       force: isForce
     }, project.id);
 
-    console.log(`Scan completed${isDeep ? " (deep mode)" : ""}\n`);
-    console.log(`Project:          ${project.name}`);
-    console.log(`Files scanned:    ${result.filesScanned.toLocaleString()}`);
-    console.log(`Packages detected:${result.packagesDetected.toLocaleString()}`);
-    console.log(`Changes detected: ${result.changesDetected.toLocaleString()}`);
-    console.log(`Duration:         ${(result.durationMs / 1000).toFixed(2)}s`);
-    console.log(`Status:           ${result.status}\n`);
+    return outputSuccess(
+      "scan",
+      result,
+      jsonMode,
+      () => {
+        console.log(`Scan completed${isDeep ? " (deep mode)" : ""}\n`);
+        console.log(`Project:          ${project.name}`);
+        console.log(`Files scanned:    ${result.filesScanned.toLocaleString()}`);
+        console.log(`Packages detected:${result.packagesDetected.toLocaleString()}`);
+        console.log(`Changes detected: ${result.changesDetected.toLocaleString()}`);
+        console.log(`Duration:         ${(result.durationMs / 1000).toFixed(2)}s`);
+        console.log(`Status:           ${result.status}\n`);
+      }
+    );
   };
 
-  await runSingleScan();
+  const code = await runSingleScan();
 
   if (isWatch) {
     console.log("[watch] Watching project dependency files for changes (Ctrl+C to exit)...");
@@ -118,5 +133,5 @@ export async function executeScan(
     await new Promise<void>(() => {});
   }
 
-  return 0;
+  return code;
 }

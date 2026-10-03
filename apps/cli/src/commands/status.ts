@@ -22,17 +22,25 @@ function timeAgo(isoString: string | null | undefined): string {
   return `${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
 }
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeStatus(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "status",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
   const latestScan = getLatestScanForProject(db, project.id);
@@ -62,17 +70,48 @@ export async function executeStatus(
     health
   }, project.id);
 
-  console.log("Package Guard Status\n");
-  console.log(`Project:             ${project.name}`);
-  console.log(`Path:                ${project.path}`);
-  console.log(`Environment:         ${pm}`);
-  console.log(`Packages:            ${pkgs.length} (${outdated.length} outdated)`);
-  console.log(`Recent Changes:      ${changesCount}`);
-  console.log(`Last Scan:           ${timeAgo(latestScan?.created_at)}`);
-  console.log(`Active Snapshot:     ${latestSnapshot ? `${latestSnapshot.name} (${latestSnapshot.id})` : "None"}`);
-  console.log(`Security Status:     ${security.status === "OK" ? "SAFE (0 vulnerabilities)" : `${security.summary.total} vulnerabilities detected`}`);
-  console.log(`Verification Status: ${verification.status}`);
-  console.log(`Health:              ${health}\n`);
-
-  return 0;
+  return outputSuccess(
+    "status",
+    {
+      project: {
+        id: project.id,
+        name: project.name,
+        path: project.path,
+        packageManager: pm
+      },
+      packages: {
+        total: pkgs.length,
+        outdated: outdated.length
+      },
+      recentChanges: changesCount,
+      lastScan: latestScan ? latestScan.created_at : null,
+      activeSnapshot: latestSnapshot ? {
+        id: latestSnapshot.id,
+        name: latestSnapshot.name,
+        createdAt: latestSnapshot.created_at
+      } : null,
+      security: {
+        status: security.status,
+        vulnerabilitiesCount: security.summary.total
+      },
+      verification: {
+        status: verification.status
+      },
+      health
+    },
+    jsonMode,
+    () => {
+      console.log("Package Guard Status\n");
+      console.log(`Project:             ${project.name}`);
+      console.log(`Path:                ${project.path}`);
+      console.log(`Environment:         ${pm}`);
+      console.log(`Packages:            ${pkgs.length} (${outdated.length} outdated)`);
+      console.log(`Recent Changes:      ${changesCount}`);
+      console.log(`Last Scan:           ${timeAgo(latestScan?.created_at)}`);
+      console.log(`Active Snapshot:     ${latestSnapshot ? `${latestSnapshot.name} (${latestSnapshot.id})` : "None"}`);
+      console.log(`Security Status:     ${security.status === "OK" ? "SAFE (0 vulnerabilities)" : `${security.summary.total} vulnerabilities detected`}`);
+      console.log(`Verification Status: ${verification.status}`);
+      console.log(`Health:              ${health}\n`);
+    }
+  );
 }

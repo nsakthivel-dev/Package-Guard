@@ -1,9 +1,25 @@
-export function executeHelp(args: string[] = []): number {
+import { outputSuccess } from "../output";
+
+export function executeHelp(args: string[] = [], isJson: boolean = false): number {
   const subCommand = args[0]?.toLowerCase();
 
   if (subCommand) {
     switch (subCommand) {
       case "init":
+        if (isJson) {
+          outputSuccess({
+            command: "init",
+            syntax: "pg init [name] [--project <path>]",
+            description: "Initializes Package Guard for the current directory. Automatically detects project type, package manager, manifests, lockfiles, creates .packageguard/PACKAGEGUARD.md, and maintains AGENTS.md for AI coding agents.",
+            options: [
+              { flag: "--project, -p <path>", description: "Target specific project directory instead of cwd" },
+              { flag: "--json, -j", description: "Output machine-readable JSON format" }
+            ],
+            examples: ["pg init", "pg init my-web-app", "pg init --json"],
+            safety: "Safe operation. Does not modify or overwrite your existing project files or lockfiles."
+          });
+          return 0;
+        }
         console.log(`Package Guard Help: init
 
 Syntax:
@@ -12,14 +28,17 @@ Syntax:
 Description:
   Initializes Package Guard for the current directory. Automatically detects project type,
   package manager (npm, pnpm, yarn, bun, pip), manifests, lockfiles, and registers tracking
-  metadata in SQLite. Performs an initial baseline scan and notifies the Electron desktop app.
+  metadata in SQLite. Performs an initial baseline scan, creates .packageguard/PACKAGEGUARD.md,
+  and maintains AGENTS.md for AI coding agents.
 
 Options:
   --project, -p <path>     Target specific project directory instead of cwd
+  --json, -j               Output machine-readable JSON format
 
 Examples:
   pg init
   pg init my-web-app
+  pg init --json
 
 Safety:
   Safe operation. Does not modify or overwrite your existing project files or lockfiles.
@@ -216,10 +235,133 @@ Description:
     }
   }
 
+  if (isJson) {
+    outputSuccess({
+      name: "PackageGuard CLI",
+      version: "1.0.0",
+      description: "PackageGuard authoritative command hierarchy for developers and AI coding agents",
+      globalOptions: [
+        { flag: "--json, -j", description: "Output machine-readable JSON format" },
+        { flag: "--project, -p <path>", description: "Target specific project directory instead of cwd" },
+        { flag: "--yes, -y, --force", description: "Bypass interactive confirmation prompts" }
+      ],
+      categories: [
+        {
+          name: "Project Management",
+          commands: [
+            { name: "init", syntax: "pg init [name]", description: "Initialize Package Guard for the current directory" },
+            { name: "remove", syntax: "pg remove", description: "Untrack project from Package Guard (preserves project files)" },
+            { name: "projects", syntax: "pg projects", description: "List all tracked projects" },
+            { name: "project current", syntax: "pg project current", description: "Display active project info" },
+            { name: "project switch", syntax: "pg project switch <name>", description: "Switch active project context" },
+            { name: "project rename", syntax: "pg project rename <name>", description: "Rename current project" },
+            { name: "project delete", syntax: "pg project delete <name>", description: "Delete project tracking data (preserves project files)" }
+          ]
+        },
+        {
+          name: "Scanning",
+          commands: [
+            { name: "scan", syntax: "pg scan [--deep|--force|--watch]", description: "Scan files, manifests, and packages" },
+            { name: "rescan", syntax: "pg rescan", description: "Force fresh scan" },
+            { name: "status", syntax: "pg status", description: "Show project state, counts, outdated, and security status" }
+          ]
+        },
+        {
+          name: "Package Information",
+          commands: [
+            { name: "packages", syntax: "pg packages", description: "List installed packages with versions, type, and status" },
+            { name: "package", syntax: "pg package <name>", description: "Inspect a package (versions, advisories, location)" },
+            { name: "info", syntax: "pg info <name>", description: "Alias for package inspection" },
+            { name: "search", syntax: "pg search <query>", description: "Search packages by partial name" },
+            { name: "tree", syntax: "pg tree", description: "Display dependency tree" },
+            { name: "stats", syntax: "pg stats", description: "Display metrics and update counts" }
+          ]
+        },
+        {
+          name: "Changes & Diffs",
+          commands: [
+            { name: "changes", syntax: "pg changes", description: "Show added (+), removed (-), modified (~) files" },
+            { name: "diff", syntax: "pg diff [<snap1> <snap2>]", description: "Show file differences against snapshot" },
+            { name: "compare", syntax: "pg compare <p1> <p2>", description: "Compare dependency sets of two projects" }
+          ]
+        },
+        {
+          name: "Updates & Rollback",
+          commands: [
+            { name: "outdated", syntax: "pg outdated", description: "Check for available package updates" },
+            { name: "update", syntax: "pg update <pkg> [--major]", description: "Update single package with automatic safety snapshot" },
+            { name: "update --all", syntax: "pg update --all [--safe]", description: "Update all packages with accurate progress tracking" },
+            { name: "upgrade", syntax: "pg upgrade", description: "Alias for batch package upgrade" },
+            { name: "rollback", syntax: "pg rollback", description: "Rollback to latest safety snapshot" }
+          ]
+        },
+        {
+          name: "Snapshots",
+          commands: [
+            { name: "snapshot create", syntax: "pg snapshot [create] [name]", description: "Create a project snapshot" },
+            { name: "snapshot list", syntax: "pg snapshot list", description: "List all recorded snapshots" },
+            { name: "snapshot show", syntax: "pg snapshot show <id>", description: "Show details of a snapshot" },
+            { name: "snapshot restore", syntax: "pg snapshot restore <id> [-y]", description: "Restore project state from snapshot" },
+            { name: "snapshot delete", syntax: "pg snapshot delete <id> [-y]", description: "Delete snapshot safely" },
+            { name: "snapshot export", syntax: "pg snapshot export <id> [--out <file>]", description: "Export snapshot to standalone file" },
+            { name: "snapshot import", syntax: "pg snapshot import <file>", description: "Import snapshot from file" }
+          ]
+        },
+        {
+          name: "Security",
+          commands: [
+            { name: "audit", syntax: "pg audit", description: "Run dependency vulnerability inspection" },
+            { name: "security", syntax: "pg security", description: "Overview of detected security risks" },
+            { name: "vulnerabilities", syntax: "pg vulnerabilities", description: "List detected vulnerabilities by severity" },
+            { name: "fix-security", syntax: "pg fix-security", description: "Automatically remediate security vulnerabilities" }
+          ]
+        },
+        {
+          name: "Verification",
+          commands: [
+            { name: "verify", syntax: "pg verify [--deep]", description: "Verify on-disk files vs recorded state" },
+            { name: "check", syntax: "pg check", description: "Fast project health check" },
+            { name: "integrity", syntax: "pg integrity", description: "Verify lockfile hashes and node_modules integrity" }
+          ]
+        },
+        {
+          name: "Cleaning & Diagnostics",
+          commands: [
+            { name: "clean", syntax: "pg clean <cache|snapshots|logs|all>", description: "Clean temporary files safely" },
+            { name: "doctor", syntax: "pg doctor", description: "Run 11-subsystem health diagnostics (PASS/WARN/FAIL)" },
+            { name: "repair", syntax: "pg repair [packages|database|config]", description: "Conservative self-repair" }
+          ]
+        },
+        {
+          name: "Configuration",
+          commands: [
+            { name: "config", syntax: "pg config [get|set|reset]", description: "List or modify configuration entries" },
+            { name: "settings", syntax: "pg settings", description: "Categorized configuration summary" }
+          ]
+        },
+        {
+          name: "Service & IPC",
+          commands: [
+            { name: "ping", syntax: "pg ping", description: "Test Named Pipe connectivity to Electron" },
+            { name: "service", syntax: "pg service <status|restart>", description: "Check or restart IPC communication" },
+            { name: "sync", syntax: "pg sync", description: "Flush offline PENDING events to Electron" },
+            { name: "queue", syntax: "pg queue", description: "Inspect technical event queue" }
+          ]
+        }
+      ]
+    });
+    return 0;
+  }
+
   console.log(`Package Guard CLI — Authoritative Command Hierarchy
 
 Usage:
   pg <command> [subcommand] [options]
+
+Global Options:
+  --json, -j               Output machine-readable JSON format
+  --project, -p <path>     Target specific project directory instead of cwd
+  --yes, -y, --force       Bypass interactive confirmation prompts
 
 Project Management:
   init                     Initialize Package Guard for the current directory
@@ -313,6 +455,7 @@ Backup & Restore:
   backup                   Create database and metadata backup
   backup list              List recorded backups
   backup restore [<id>]    Safely restore database from backup
+  backup purge             Purge old backups beyond retention policy
 
 System & Utility:
   install                  Install CLI binary shim

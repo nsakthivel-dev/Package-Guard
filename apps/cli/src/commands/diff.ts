@@ -7,17 +7,26 @@ import { scanProject, walkDirectory, calculateFileHash } from "../services/scann
 import { getLatestSnapshotForProject } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeDiff(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "diff",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
   interface DiffDetail {
@@ -33,20 +42,30 @@ export async function executeDiff(
   const diffs: DiffDetail[] = [];
 
   // Case 1: Two snapshots specified: pg diff <snap1> <snap2>
-  if (args.length >= 2) {
-    const snap1Id = args[0];
-    const snap2Id = args[1];
+  if (cleanArgs.length >= 2) {
+    const snap1Id = cleanArgs[0];
+    const snap2Id = cleanArgs[1];
 
     const s1 = getSnapshot(db, snap1Id);
     const s2 = getSnapshot(db, snap2Id);
 
     if (!s1.snapshot) {
-      console.error(`Error: Snapshot '${snap1Id}' not found.\n`);
-      return 4;
+      return outputError(
+        "diff",
+        "SNAPSHOT_NOT_FOUND",
+        `Snapshot '${snap1Id}' not found.`,
+        4,
+        jsonMode
+      );
     }
     if (!s2.snapshot) {
-      console.error(`Error: Snapshot '${snap2Id}' not found.\n`);
-      return 4;
+      return outputError(
+        "diff",
+        "SNAPSHOT_NOT_FOUND",
+        `Snapshot '${snap2Id}' not found.`,
+        4,
+        jsonMode
+      );
     }
 
     const s1Map = new Map<string, { hash: string; size: number }>();
@@ -96,10 +115,12 @@ export async function executeDiff(
       }
     }
 
-    console.log(`Diff between Snapshot ${snap1Id} and Snapshot ${snap2Id}:\n`);
+    if (!jsonMode) {
+      console.log(`Diff between Snapshot ${snap1Id} and Snapshot ${snap2Id}:\n`);
+    }
   } else {
     // Case 2: One snapshot specified or latest snapshot
-    const explicitSnapshotId = args[0];
+    const explicitSnapshotId = cleanArgs[0];
     let snapshotId = explicitSnapshotId;
 
     if (!snapshotId) {
@@ -112,8 +133,13 @@ export async function executeDiff(
     if (snapshotId) {
       const { snapshot, files } = getSnapshot(db, snapshotId);
       if (!snapshot) {
-        console.error(`Error: Snapshot '${snapshotId}' not found.\n`);
-        return 4;
+        return outputError(
+          "diff",
+          "SNAPSHOT_NOT_FOUND",
+          `Snapshot '${snapshotId}' not found.`,
+          4,
+          jsonMode
+        );
       }
 
       const baselineMap = new Map<string, { hash: string; size: number }>();
@@ -171,7 +197,9 @@ export async function executeDiff(
         }
       }
 
-      console.log(`Diff for ${project.name} (against snapshot ${snapshotId}):\n`);
+      if (!jsonMode) {
+        console.log(`Diff for ${project.name} (against snapshot ${snapshotId}):\n`);
+      }
     } else {
       // No snapshot available, use scan comparison
       const scan = await scanProject(db, project.id, projectDir, project.name);
@@ -186,7 +214,9 @@ export async function executeDiff(
           summary: c.type === "ADDED" ? `Added (+${c.newSize ?? 0} bytes)` : c.type === "DELETED" ? `Deleted (-${c.oldSize ?? 0} bytes)` : `Modified`
         });
       }
-      console.log(`Diff for ${project.name} (working tree changes):\n`);
+      if (!jsonMode) {
+        console.log(`Diff for ${project.name} (working tree changes):\n`);
+      }
     }
   }
 
@@ -197,16 +227,26 @@ export async function executeDiff(
     diffs
   }, project.id);
 
-  if (diffs.length === 0) {
-    console.log("No differences detected.\n");
-    return 0;
-  }
+  return outputSuccess(
+    "diff",
+    {
+      projectId: project.id,
+      projectName: project.name,
+      totalDiffs: diffs.length,
+      diffs
+    },
+    jsonMode,
+    () => {
+      if (diffs.length === 0) {
+        console.log("No differences detected.\n");
+        return;
+      }
 
-  for (const d of diffs) {
-    const symbol = d.type === "ADDED" ? "+" : d.type === "DELETED" ? "-" : "~";
-    console.log(`${symbol} ${d.file} (${d.summary})`);
-  }
-  console.log();
-
-  return 0;
+      for (const d of diffs) {
+        const symbol = d.type === "ADDED" ? "+" : d.type === "DELETED" ? "-" : "~";
+        console.log(`${symbol} ${d.file} (${d.summary})`);
+      }
+      console.log();
+    }
+  );
 }

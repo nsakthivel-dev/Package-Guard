@@ -3,8 +3,9 @@ import type BetterSqlite3 from "better-sqlite3";
 import { sendRequest, PipeClientError } from "../pipe-client";
 import { insertEvent, markSynced } from "@package-guard/shared/repository";
 import type { PackageGuardRequest } from "@package-guard/shared";
+import { outputSuccess, outputError } from "../output";
 
-export async function executePing(db: BetterSqlite3.Database): Promise<number> {
+export async function executePing(db: BetterSqlite3.Database, isJson: boolean = false): Promise<number> {
   const request: PackageGuardRequest = {
     id: randomUUID(),
     type: "PING",
@@ -13,18 +14,35 @@ export async function executePing(db: BetterSqlite3.Database): Promise<number> {
 
   try {
     insertEvent(db, request.id, request.type, request.payload);
-    console.log("[CLI] Event saved to database (PENDING)");
+    if (!isJson) {
+      console.log("[CLI] Event saved to database (PENDING)");
+    }
   } catch (dbError) {
-    console.error("[CLI] Failed to write to database:", dbError instanceof Error ? dbError.message : dbError);
+    if (isJson) {
+      outputError(dbError instanceof Error ? dbError.message : String(dbError), "DATABASE_ERROR");
+    } else {
+      console.error("[CLI] Failed to write to database:", dbError instanceof Error ? dbError.message : dbError);
+    }
     return 1;
   }
 
-  console.log("[CLI] Connecting to Package Guard");
+  if (!isJson) {
+    console.log("[CLI] Connecting to Package Guard");
+  }
   try {
     const result = await sendRequest(request, false);
 
     if (result.ack.payload.synced) {
       markSynced(db, request.id, "LIVE");
+    }
+
+    if (isJson) {
+      outputSuccess({
+        connected: true,
+        response: result.pong.payload.message,
+        eventStatus: result.ack.payload.synced ? "SYNCED" : "PENDING"
+      });
+      return 0;
     }
 
     console.log("");
@@ -38,6 +56,15 @@ export async function executePing(db: BetterSqlite3.Database): Promise<number> {
     console.log(`Event status: ${result.ack.payload.synced ? "SYNCED" : "PENDING"}`);
     return 0;
   } catch (error) {
+    if (isJson) {
+      outputSuccess({
+        connected: false,
+        message: "Electron is not running. The event has been saved and will be synchronized when Package Guard starts.",
+        eventStatus: "PENDING"
+      });
+      return 0;
+    }
+
     if (error instanceof PipeClientError) {
       console.log("");
       console.log("Electron is not running.");

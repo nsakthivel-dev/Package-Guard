@@ -58,17 +58,21 @@ import { executeHelp } from "./commands/help";
 import { executeAbout } from "./commands/about";
 import { executeDocs } from "./commands/docs";
 import { executeLicense } from "./commands/license";
+import { outputSuccess, outputError } from "./output";
 
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
-  // Extract flags like --project, -p
+  // Extract flags like --project, -p, --json, -j
+  let isJson = false;
   let targetDir = process.cwd();
   const filteredArgs: string[] = [];
 
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
-    if (arg === "--project" || arg === "-p") {
+    if (arg === "--json" || arg === "-j") {
+      isJson = true;
+    } else if (arg === "--project" || arg === "-p") {
       if (i + 1 < rawArgs.length) {
         targetDir = rawArgs[i + 1];
         i++; // skip next arg
@@ -84,19 +88,24 @@ async function main(): Promise<void> {
 
   // Version check
   if (firstArg === "--version" || firstArg === "-v" || firstArg === "version") {
+    if (isJson) {
+      outputSuccess({ name: "PackageGuard CLI", version: "1.0.0" });
+      process.exitCode = 0;
+      return;
+    }
     process.exitCode = executeVersion();
     return;
   }
 
   // Help check
   if (!firstArg || firstArg === "--help" || firstArg === "-h" || firstArg === "help") {
-    process.exitCode = executeHelp(filteredArgs.slice(1));
+    process.exitCode = executeHelp(filteredArgs.slice(1), isJson);
     return;
   }
 
   // Command-specific help flag, e.g. "pg scan --help"
   if (filteredArgs.includes("--help") || filteredArgs.includes("-h")) {
-    process.exitCode = executeHelp([firstArg]);
+    process.exitCode = executeHelp([firstArg], isJson);
     return;
   }
 
@@ -121,41 +130,41 @@ async function main(): Promise<void> {
     switch (firstArg) {
       // --- Project Management ---
       case "init":
-        process.exitCode = await executeInit(db, targetDir, subArgs);
+        process.exitCode = await executeInit(db, targetDir, subArgs, isJson);
         break;
 
       case "remove":
-        process.exitCode = await executeRemove(db, targetDir, subArgs);
+        process.exitCode = await executeRemove(db, targetDir, subArgs, isJson);
         break;
 
       case "projects":
-        process.exitCode = await executeProjects(db, targetDir, subArgs);
+        process.exitCode = await executeProjects(db, targetDir, subArgs, isJson);
         break;
 
       case "project":
-        process.exitCode = await executeProject(db, targetDir, subArgs);
+        process.exitCode = await executeProject(db, targetDir, subArgs, isJson);
         break;
 
       // --- Scanning ---
       case "scan":
-        process.exitCode = await executeScan(db, targetDir, subArgs);
+        process.exitCode = await executeScan(db, targetDir, subArgs, isJson);
         break;
 
       case "rescan":
-        process.exitCode = await executeRescan(db, targetDir, subArgs);
+        process.exitCode = await executeRescan(db, targetDir, subArgs, isJson);
         break;
 
       case "status":
-        process.exitCode = await executeStatus(db, targetDir, subArgs);
+        process.exitCode = await executeStatus(db, targetDir, subArgs, isJson);
         break;
 
       // --- Package Information ---
       case "packages":
-        process.exitCode = await executePackages(db, targetDir, subArgs);
+        process.exitCode = await executePackages(db, targetDir, subArgs, isJson);
         break;
 
       case "package":
-        process.exitCode = await executePackage(db, targetDir, subArgs);
+        process.exitCode = await executePackage(db, targetDir, subArgs, isJson);
         break;
 
       case "search":
@@ -163,7 +172,7 @@ async function main(): Promise<void> {
         break;
 
       case "info":
-        process.exitCode = await executeInfo(db, targetDir, subArgs);
+        process.exitCode = await executeInfo(db, targetDir, subArgs, isJson);
         break;
 
       case "tree":
@@ -176,11 +185,11 @@ async function main(): Promise<void> {
 
       // --- Changes & Diffs ---
       case "changes":
-        process.exitCode = await executeChanges(db, targetDir, subArgs);
+        process.exitCode = await executeChanges(db, targetDir, subArgs, isJson);
         break;
 
       case "diff":
-        process.exitCode = await executeDiff(db, targetDir, subArgs);
+        process.exitCode = await executeDiff(db, targetDir, subArgs, isJson);
         break;
 
       case "compare":
@@ -189,100 +198,100 @@ async function main(): Promise<void> {
 
       // --- Updates & Rollback ---
       case "outdated":
-        process.exitCode = await executeOutdated(db, targetDir, subArgs);
+        process.exitCode = await executeOutdated(db, targetDir, subArgs, isJson);
         break;
 
       case "update":
-        process.exitCode = await executeUpdate(db, targetDir, subArgs);
+        process.exitCode = await executeUpdate(db, targetDir, subArgs, isJson);
         break;
 
       case "upgrade":
-        process.exitCode = await executeUpgrade(db, targetDir, subArgs);
+        process.exitCode = await executeUpgrade(db, targetDir, subArgs, isJson);
         break;
 
       case "rollback":
-        process.exitCode = await executeRollback(db, targetDir, subArgs);
+        process.exitCode = await executeRollback(db, targetDir, subArgs, isJson);
         break;
 
       // --- Snapshots ---
       case "snapshot": {
         const sub = subArgs[0]?.toLowerCase();
         if (sub === "create") {
-          process.exitCode = await executeSnapshot(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshot(db, targetDir, subArgs.slice(1), isJson);
         } else if (sub === "list") {
-          process.exitCode = await executeSnapshotList(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshotList(db, targetDir, subArgs.slice(1), isJson);
         } else if (sub === "show") {
-          process.exitCode = await executeSnapshotShow(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshotShow(db, targetDir, subArgs.slice(1), isJson);
         } else if (sub === "restore") {
-          process.exitCode = await executeSnapshotRestore(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshotRestore(db, targetDir, subArgs.slice(1), isJson);
         } else if (sub === "delete") {
-          process.exitCode = await executeSnapshotDelete(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshotDelete(db, targetDir, subArgs.slice(1), isJson);
         } else if (sub === "export") {
-          process.exitCode = await executeSnapshotExport(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshotExport(db, targetDir, subArgs.slice(1), isJson);
         } else if (sub === "import") {
-          process.exitCode = await executeSnapshotImport(db, targetDir, subArgs.slice(1));
+          process.exitCode = await executeSnapshotImport(db, targetDir, subArgs.slice(1), isJson);
         } else {
-          process.exitCode = await executeSnapshot(db, targetDir, subArgs);
+          process.exitCode = await executeSnapshot(db, targetDir, subArgs, isJson);
         }
         break;
       }
 
       // --- History ---
       case "history":
-        process.exitCode = await executeHistory(db, targetDir, subArgs);
+        process.exitCode = await executeHistory(db, targetDir, subArgs, isJson);
         break;
 
       // --- Security ---
       case "audit":
-        process.exitCode = await executeAudit(db, targetDir, subArgs);
+        process.exitCode = await executeAudit(db, targetDir, subArgs, isJson);
         break;
 
       case "security":
-        process.exitCode = await executeSecurity(db, targetDir, subArgs);
+        process.exitCode = await executeSecurity(db, targetDir, subArgs, isJson);
         break;
 
       case "vulnerabilities":
-        process.exitCode = await executeVulnerabilities(db, targetDir, subArgs);
+        process.exitCode = await executeVulnerabilities(db, targetDir, subArgs, isJson);
         break;
 
       case "fix-security":
-        process.exitCode = await executeFixSecurity(db, targetDir, subArgs);
+        process.exitCode = await executeFixSecurity(db, targetDir, subArgs, isJson);
         break;
 
       // --- Verification ---
       case "verify":
-        process.exitCode = await executeVerify(db, targetDir, subArgs);
+        process.exitCode = await executeVerify(db, targetDir, subArgs, isJson);
         break;
 
       case "check":
-        process.exitCode = await executeCheck(db, targetDir, subArgs);
+        process.exitCode = await executeCheck(db, targetDir, subArgs, isJson);
         break;
 
       case "integrity":
-        process.exitCode = await executeIntegrity(db, targetDir, subArgs);
+        process.exitCode = await executeIntegrity(db, targetDir, subArgs, isJson);
         break;
 
       // --- Cleaning ---
       case "clean":
-        process.exitCode = await executeClean(db, targetDir, subArgs);
+        process.exitCode = await executeClean(db, targetDir, subArgs, isJson);
         break;
 
       // --- Diagnostics & Repair ---
       case "doctor":
-        process.exitCode = await executeDoctor(db, targetDir, subArgs);
+        process.exitCode = await executeDoctor(db, targetDir, subArgs, isJson);
         break;
 
       case "repair":
-        process.exitCode = await executeRepair(db, targetDir, subArgs);
+        process.exitCode = await executeRepair(db, targetDir, subArgs, isJson);
         break;
 
       // --- Configuration ---
       case "config":
-        process.exitCode = await executeConfig(db, targetDir, subArgs);
+        process.exitCode = await executeConfig(db, targetDir, subArgs, isJson);
         break;
 
       case "settings":
-        process.exitCode = await executeSettings(db, targetDir, subArgs);
+        process.exitCode = await executeSettings(db, targetDir, subArgs, isJson);
         break;
 
       // --- Export & Import ---
@@ -301,7 +310,7 @@ async function main(): Promise<void> {
 
       // --- Service & IPC ---
       case "ping":
-        process.exitCode = await executePing(db);
+        process.exitCode = await executePing(db, isJson);
         break;
 
       case "service":
@@ -343,13 +352,21 @@ async function main(): Promise<void> {
         break;
 
       default:
-        console.error(`Unknown command: '${firstArg}'\n`);
-        console.error("Run 'pg help' to see available commands.\n");
+        if (isJson) {
+          outputError(`Unknown command: '${firstArg}'. Run 'pg help' to see available commands.`, "UNKNOWN_COMMAND");
+        } else {
+          console.error(`Unknown command: '${firstArg}'\n`);
+          console.error("Run 'pg help' to see available commands.\n");
+        }
         process.exitCode = 2;
         break;
     }
   } catch (err) {
-    console.error("Error:", err instanceof Error ? err.message : err);
+    if (isJson) {
+      outputError(err instanceof Error ? err.message : String(err), "COMMAND_FAILED");
+    } else {
+      console.error("Error:", err instanceof Error ? err.message : err);
+    }
     process.exitCode = 1;
   } finally {
     try {

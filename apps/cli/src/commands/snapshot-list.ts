@@ -17,17 +17,25 @@ function formatDate(iso: string): string {
   }
 }
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeSnapshotList(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  args: string[] = [],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "snapshot_list",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
   const snapshots = listSnapshots(db, project.id);
@@ -45,21 +53,39 @@ export async function executeSnapshotList(
     }))
   }, project.id);
 
-  console.log("Snapshots\n");
+  return outputSuccess(
+    "snapshot_list",
+    {
+      projectId: project.id,
+      projectName: project.name,
+      count: snapshots.length,
+      snapshots: snapshots.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        fileCount: s.file_count,
+        packageCount: s.package_count,
+        status: s.status,
+        createdAt: s.created_at
+      }))
+    },
+    jsonMode,
+    () => {
+      console.log("Snapshots\n");
 
-  if (snapshots.length === 0) {
-    console.log("No snapshots found. Run 'pg snapshot' to create one.");
-    return 0;
-  }
+      if (snapshots.length === 0) {
+        console.log("No snapshots found. Run 'pg snapshot' to create one.");
+        return;
+      }
 
-  console.log("ID       Name             Created");
-  console.log("------------------------------------------------");
-  for (const s of snapshots) {
-    const idPad = s.id.padEnd(8, " ");
-    const namePad = s.name.slice(0, 16).padEnd(17, " ");
-    const dateStr = formatDate(s.created_at);
-    console.log(`${idPad} ${namePad} ${dateStr}`);
-  }
-
-  return 0;
+      console.log("ID       Name             Created");
+      console.log("------------------------------------------------");
+      for (const s of snapshots) {
+        const idPad = s.id.padEnd(8, " ");
+        const namePad = s.name.slice(0, 16).padEnd(17, " ");
+        const dateStr = formatDate(s.created_at);
+        console.log(`${idPad} ${namePad} ${dateStr}`);
+      }
+    }
+  );
 }

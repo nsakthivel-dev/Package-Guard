@@ -3,17 +3,25 @@ import { findProject, isInitialized } from "../services/project-service";
 import { scanProject } from "../services/scanner-service";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeChanges(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "changes",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
   const scan = await scanProject(db, project.id, projectDir, project.name);
@@ -32,23 +40,36 @@ export async function executeChanges(
     deleted: deleted.map((c) => c.path)
   }, project.id);
 
-  console.log(`Changes for ${project.name}:\n`);
+  return outputSuccess(
+    "changes",
+    {
+      projectId: project.id,
+      projectName: project.name,
+      totalChanges: changes.length,
+      added: added.map((c) => ({ path: c.path, size: c.newSize, hash: c.newHash })),
+      modified: modified.map((c) => ({ path: c.path, oldSize: c.oldSize, newSize: c.newSize, oldHash: c.oldHash, newHash: c.newHash })),
+      deleted: deleted.map((c) => ({ path: c.path, size: c.oldSize, hash: c.oldHash })),
+      raw: changes
+    },
+    jsonMode,
+    () => {
+      console.log(`Changes for ${project.name}:\n`);
 
-  if (changes.length === 0) {
-    console.log("No changes detected since last baseline/snapshot.\n");
-    return 0;
-  }
+      if (changes.length === 0) {
+        console.log("No changes detected since last baseline/snapshot.\n");
+        return;
+      }
 
-  for (const a of added) {
-    console.log(`+ ${a.path} (added)`);
-  }
-  for (const m of modified) {
-    console.log(`~ ${m.path} (modified)`);
-  }
-  for (const d of deleted) {
-    console.log(`- ${d.path} (removed)`);
-  }
-  console.log();
-
-  return 0;
+      for (const a of added) {
+        console.log(`+ ${a.path} (added)`);
+      }
+      for (const m of modified) {
+        console.log(`~ ${m.path} (modified)`);
+      }
+      for (const d of deleted) {
+        console.log(`- ${d.path} (removed)`);
+      }
+      console.log();
+    }
+  );
 }

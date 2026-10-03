@@ -2,11 +2,13 @@ import type BetterSqlite3 from "better-sqlite3";
 import { findProject } from "../services/project-service";
 import { runDoctor } from "../services/doctor-service";
 import { sendCliEvent } from "../pipe-client";
+import { outputSuccess } from "../output";
 
 export async function executeDoctor(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  _args: string[],
+  isJson: boolean = false
 ): Promise<number> {
   const { project, projectDir } = findProject(db, targetDir);
 
@@ -18,6 +20,11 @@ export async function executeDoctor(
     overall: report.overall,
     checks: report.checks
   }, project?.id);
+
+  if (isJson) {
+    outputSuccess(report);
+    return report.overall === "OK" ? 0 : 1;
+  }
 
   console.log("Package Guard Doctor\n");
 

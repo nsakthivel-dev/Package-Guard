@@ -4,20 +4,29 @@ import { verifyProject } from "../services/verify-service";
 import { insertHistory } from "@package-guard/shared/repository";
 import { sendCliEvent } from "../pipe-client";
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeVerify(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "verify",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
-  const isDeep = args.includes("--deep");
+  const isDeep = cleanArgs.includes("--deep");
   const result = await verifyProject(db, project.id, projectDir, { deep: isDeep });
 
   insertHistory(db, {
@@ -40,29 +49,30 @@ export async function executeVerify(
     deep: isDeep
   }, project.id);
 
-  console.log(`Package Guard Verification${isDeep ? " (deep mode)" : ""}\n`);
-  console.log(`Files checked: ${result.filesChecked.toLocaleString()}`);
-  console.log(`Valid:         ${result.valid.toLocaleString()}`);
-  console.log(`Changed:       ${result.changed.toLocaleString()}`);
-  console.log(`Missing:       ${result.missing.toLocaleString()}`);
-  console.log(`Unexpected:    ${result.unexpected.toLocaleString()}`);
-
-  if (result.details.length > 0) {
-    console.log("\nIssues Detected:");
-    for (const d of result.details.slice(0, 15)) {
-      console.log(`  - ${d.file}: ${d.issue}`);
-    }
-    if (result.details.length > 15) {
-      console.log(`  ... and ${result.details.length - 15} more`);
-    }
-  }
-
-  console.log(`\nResult: ${result.status}\n`);
-
   if (result.status === "OK") {
-    return 0;
+    return outputSuccess(
+      "verify",
+      result,
+      jsonMode,
+      () => {
+        console.log(`Package Guard Verification${isDeep ? " (deep mode)" : ""}\n`);
+        console.log(`Files checked: ${result.filesChecked.toLocaleString()}`);
+        console.log(`Valid:         ${result.valid.toLocaleString()}`);
+        console.log(`Changed:       ${result.changed.toLocaleString()}`);
+        console.log(`Missing:       ${result.missing.toLocaleString()}`);
+        console.log(`Unexpected:    ${result.unexpected.toLocaleString()}`);
+        console.log(`\nResult: ${result.status}\n`);
+      }
+    );
   }
 
-  // Exit code 4 = verification/integrity failure
-  return 4;
+  // Verification detected differences or corruption -> exit 4
+  return outputError(
+    "verify",
+    "VERIFICATION_ISSUES",
+    `Verification failed with status: ${result.status}`,
+    4,
+    jsonMode,
+    result
+  );
 }

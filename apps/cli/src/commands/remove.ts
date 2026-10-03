@@ -2,16 +2,22 @@ import type BetterSqlite3 from "better-sqlite3";
 import { findProject, isInitialized, untrackProject } from "../services/project-service";
 import { sendCliEvent } from "../pipe-client";
 import { insertHistory } from "@package-guard/shared/repository";
+import { outputSuccess, outputError } from "../output";
 
 export async function executeRemove(
   db: BetterSqlite3.Database,
   targetDir: string,
-  _args: string[]
+  _args: string[],
+  isJson: boolean = false
 ): Promise<number> {
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Current directory is not tracked by Package Guard.\n");
+    if (isJson) {
+      outputError("Current directory is not tracked by Package Guard.", "NOT_INITIALIZED");
+    } else {
+      console.error("Error: Current directory is not tracked by Package Guard.\n");
+    }
     return 3;
   }
 
@@ -42,6 +48,16 @@ export async function executeRemove(
     packageManager: pm,
     status: "UNTRACKED"
   }, projectId);
+
+  if (isJson) {
+    outputSuccess({
+      untracked: true,
+      projectId,
+      projectName,
+      projectPath: project.path
+    });
+    return 0;
+  }
 
   console.log(`Successfully untracked project '${projectName}'.`);
   console.log(`Path: ${project.path}`);

@@ -23,36 +23,64 @@ function askConfirmation(question: string): Promise<boolean> {
   });
 }
 
+import { outputSuccess, outputError } from "../output";
+
 export async function executeSnapshotDelete(
   db: BetterSqlite3.Database,
   targetDir: string,
-  args: string[]
+  args: string[],
+  isJson = false
 ): Promise<number> {
+  const jsonMode = isJson || args.includes("--json") || args.includes("-j");
+  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
   const { project, projectDir } = findProject(db, targetDir);
 
   if (!project || !isInitialized(projectDir, project)) {
-    console.error("Error: Package Guard has not been initialized in this directory.\n");
-    console.error("Run:\n\n  pg init\n");
-    return 3;
+    return outputError(
+      "snapshot_delete",
+      "PROJECT_NOT_INITIALIZED",
+      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      3,
+      jsonMode
+    );
   }
 
-  const nonFlagArgs = args.filter((a) => !a.startsWith("-"));
-  const isForced = args.some((a) => a === "-y" || a === "--yes" || a === "--force");
+  const nonFlagArgs = cleanArgs.filter((a) => !a.startsWith("-"));
+  const isForced = cleanArgs.some((a) => a === "-y" || a === "--yes" || a === "--force");
 
   const snapshotId = nonFlagArgs[0];
   if (!snapshotId) {
-    console.error("Error: Snapshot ID is required.");
-    console.error("Usage: pg snapshot delete <id> [-y]");
-    return 2;
+    return outputError(
+      "snapshot_delete",
+      "ARGUMENT_REQUIRED",
+      "Snapshot ID is required. Usage: pg snapshot delete <id> [-y]",
+      2,
+      jsonMode
+    );
   }
 
   const { snapshot } = getSnapshot(db, snapshotId);
   if (!snapshot) {
-    console.error(`Error: Snapshot '${snapshotId}' not found.`);
-    return 4;
+    return outputError(
+      "snapshot_delete",
+      "SNAPSHOT_NOT_FOUND",
+      `Snapshot '${snapshotId}' not found.`,
+      4,
+      jsonMode
+    );
   }
 
   if (!isForced) {
+    if (jsonMode) {
+      return outputError(
+        "snapshot_delete",
+        "CONFIRMATION_REQUIRED",
+        `Deleting snapshot '${snapshot.id}' (${snapshot.name}) is a destructive operation. Pass -y or --yes flag to confirm.`,
+        2,
+        jsonMode
+      );
+    }
+
     console.log(`This will delete snapshot '${snapshot.id}' (${snapshot.name}).`);
     const confirmed = await askConfirmation("Are you sure? [y/N] ");
     if (!confirmed) {
@@ -63,8 +91,13 @@ export async function executeSnapshotDelete(
 
   const success = deleteSnapshot(db, snapshotId);
   if (!success) {
-    console.error(`Error: Failed to delete snapshot '${snapshotId}'.`);
-    return 1;
+    return outputError(
+      "snapshot_delete",
+      "DELETE_FAILED",
+      `Failed to delete snapshot '${snapshotId}'.`,
+      1,
+      jsonMode
+    );
   }
 
   await sendCliEvent("snapshot_delete", {
@@ -74,6 +107,16 @@ export async function executeSnapshotDelete(
     projectName: project.name
   }, project.id);
 
-  console.log(`Snapshot '${snapshotId}' deleted successfully.`);
-  return 0;
+  return outputSuccess(
+    "snapshot_delete",
+    {
+      snapshotId: snapshot.id,
+      snapshotName: snapshot.name,
+      deleted: true
+    },
+    jsonMode,
+    () => {
+      console.log(`Snapshot '${snapshotId}' deleted successfully.`);
+    }
+  );
 }
