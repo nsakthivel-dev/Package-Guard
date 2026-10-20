@@ -13,6 +13,7 @@ export {
   getProjectByPath,
   upsertProject,
   deleteProject,
+  renameProject,
   listSnapshots,
   getSnapshot,
   createSnapshot,

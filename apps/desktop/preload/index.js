@@ -27,6 +27,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (settings) => ipcRenderer.invoke('settings:update', settings),
+  getSystemInfo: () => ipcRenderer.invoke('system:info'),
+
+  // Authentication & Profile
+  getAuthSession: () => ipcRenderer.invoke('auth:get-session'),
+  getAccounts: () => ipcRenderer.invoke('auth:get-accounts'),
+  switchAccount: (userId) => ipcRenderer.invoke('auth:switch-account', userId),
+  loginWithGoogle: (options) => ipcRenderer.invoke('auth:login-google', options),
+  updateProfile: (data) => ipcRenderer.invoke('auth:update-profile', data),
+  selectProfilePhoto: () => ipcRenderer.invoke('profile:select-photo'),
+  saveProfilePhoto: (userId, data) => ipcRenderer.invoke('profile:save-photo', { userId, ...data }),
+  removeProfilePhoto: (userId) => ipcRenderer.invoke('profile:remove-photo', userId),
+  logout: () => ipcRenderer.invoke('auth:logout'),
+  signout: () => ipcRenderer.invoke('auth:signout'),
+  clearAllSessionData: () => ipcRenderer.invoke('session:clear-all'),
+  deleteAccount: (userId, confirmation) => ipcRenderer.invoke('auth:delete-account', { userId, confirmation }),
+  getAuthConfig: () => ipcRenderer.invoke('auth:get-config'),
+  saveAuthConfig: (config) => ipcRenderer.invoke('auth:set-config', config),
+
+  // Profile Storage Location
+  getProfileStoragePath: () => ipcRenderer.invoke('profile:get-storage-path'),
+  selectProfileStorageDir: () => ipcRenderer.invoke('profile:select-storage-dir'),
+  setProfileStoragePath: (dirPath) => ipcRenderer.invoke('profile:set-storage-path', dirPath),
 
   // Snapshots
   getSnapshots: () => ipcRenderer.invoke('snapshots:get'),
@@ -41,6 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Reads from the core db.json (projects + snapshots).
   // These are REAL persisted projects registered via the GUI.
   getProjects: () => ipcRenderer.invoke('projects:get'),
+  renameProject: (projectId, newName) => ipcRenderer.invoke('projects:rename', { projectId, newName }),
   getProjectPackages: (projectId) => ipcRenderer.invoke('projects:getPackages', projectId),
   getProjectSnapshots: (projectId, limit) => ipcRenderer.invoke('projects:getSnapshots', { projectId, limit }),
   scanProject: (projectId) => ipcRenderer.invoke('projects:scan', projectId),
@@ -66,7 +89,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
-  openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
+  openDirectory: (defaultPath) => ipcRenderer.invoke('dialog:open-directory', defaultPath),
 
   // Cache / fast startup
   getBootstrap: () => ipcRenderer.invoke('bootstrap:get'),

@@ -23,7 +23,7 @@ const sharedSrc = path.join(rootDir, "packages", "shared");
 for (const scopeName of ["@package-guard", "@packageguard"]) {
   const dest = path.join(prodModulesDir, scopeName, "shared");
   fs.mkdirSync(dest, { recursive: true });
-  fs.cpSync(path.join(sharedSrc, "dist"), path.join(dest, "dist"), { recursive: true });
+  fs.cpSync(path.join(sharedSrc, "dist"), path.join(dest, "dist"), { recursive: true, dereference: true });
   fs.copyFileSync(path.join(sharedSrc, "package.json"), path.join(dest, "package.json"));
 }
 
@@ -31,7 +31,7 @@ for (const scopeName of ["@package-guard", "@packageguard"]) {
 for (const pkg of ["better-sqlite3-electron", "better-sqlite3", "bindings", "file-uri-to-path"]) {
   const src = resolveModuleDir(pkg);
   if (src) {
-    fs.cpSync(src, path.join(prodModulesDir, pkg), { recursive: true });
+    fs.cpSync(src, path.join(prodModulesDir, pkg), { recursive: true, dereference: true });
     console.log(`Copied ${pkg} from ${src}`);
   } else {
     console.warn(`Warning: Could not locate ${pkg}`);

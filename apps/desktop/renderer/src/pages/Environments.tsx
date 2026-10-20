@@ -2,12 +2,20 @@ import React, { useState, useMemo, useEffect } from "react";
 import {
   Plus, RefreshCw, Trash2, Server, Search, FolderOpen,
   CheckCircle2, ChevronRight, Box, AlertTriangle, Globe, Layers,
+  MoreVertical, Pencil, AlertCircle,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   useListEnvironments,
   useCreateEnvironment,
   useDeleteEnvironment,
   useScanEnvironment,
+  useGetSettings,
   getListEnvironmentsQueryKey,
   Environment,
 } from "@packageguard/api-client-react";
@@ -100,6 +108,11 @@ function PackageSidebar({
   title, subtitle, packages, isLoading, onViewInPackages, hasSelection,
 }: PackageSidebarProps) {
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!hasSelection) setSearch("");
+  }, [hasSelection]);
+
   const filtered = packages.filter((p: any) =>
     p.name?.toLowerCase().includes(search.toLowerCase())
   );
@@ -199,10 +212,43 @@ export default function Environments() {
     queryFn: () => (window as any).electronAPI.getRegisteredVenvs(),
   });
 
-  // ── Selection state ─────────────────────────────────────────────────────
-  const [selectedProject, setSelectedProject]   = useState<ProjectEnvironment | null>(null);
+  // ── Settings ────────────────────────────────────────────────────────────
+  const { data: settings } = useGetSettings();
+
+  // ── Active tab & Selection state ─────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<string>("global");
+  const [selectedProject, setSelectedProject]     = useState<ProjectEnvironment | null>(null);
   const [selectedGlobalEnv, setSelectedGlobalEnv] = useState<Environment | null>(null);
-  const [selectedVenv, setSelectedVenv]          = useState<any | null>(null);
+  const [selectedVenv, setSelectedVenv]           = useState<any | null>(null);
+
+  const clearSelection = () => {
+    setSelectedProject(null);
+    setSelectedGlobalEnv(null);
+    setSelectedVenv(null);
+  };
+
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    clearSelection();
+  };
+
+  const handleToggleGlobalEnv = (env: Environment) => {
+    setSelectedProject(null);
+    setSelectedVenv(null);
+    setSelectedGlobalEnv((prev: Environment | null) => (prev?.id === env.id ? null : env));
+  };
+
+  const handleToggleProject = (proj: ProjectEnvironment) => {
+    setSelectedGlobalEnv(null);
+    setSelectedVenv(null);
+    setSelectedProject((prev: ProjectEnvironment | null) => (prev?.id === proj.id ? null : proj));
+  };
+
+  const handleToggleVenv = (venv: any) => {
+    setSelectedGlobalEnv(null);
+    setSelectedProject(null);
+    setSelectedVenv((prev: any) => (prev?.path === venv.path ? null : venv));
+  };
 
   // ── Sidebar package data ────────────────────────────────────────────────
   const { data: projectPackages, isLoading: loadingProjPkgs } = useQuery<any[]>({
@@ -224,19 +270,31 @@ export default function Environments() {
   });
 
   // ── Sidebar computed values ─────────────────────────────────────────────
-  const sidebarPackages = useMemo(() => {
-    if (selectedProject) return projectPackages ?? [];
-    if (selectedVenv)    return venvPackagesResult?.packages ?? [];
-    if (selectedGlobalEnv) return globalPackagesResult ?? [];
-    return [];
-  }, [selectedProject, projectPackages, selectedVenv, venvPackagesResult, selectedGlobalEnv, globalPackagesResult]);
+  const hasSelection = !!(
+    (activeTab === "global" && selectedGlobalEnv) ||
+    (activeTab === "projects" && selectedProject) ||
+    (activeTab === "venvs" && selectedVenv)
+  );
 
-  const sidebarLoading = loadingProjPkgs || loadingVenvPkgs || loadingGlobalPkgs;
-  const sidebarTitle   = selectedProject?.name ?? selectedVenv?.name ?? selectedGlobalEnv?.name ?? "Packages";
-  const sidebarSubtitle = (selectedProject || selectedVenv || selectedGlobalEnv)
+  const sidebarPackages = useMemo(() => {
+    if (activeTab === "global" && selectedGlobalEnv) return globalPackagesResult ?? [];
+    if (activeTab === "projects" && selectedProject) return projectPackages ?? [];
+    if (activeTab === "venvs" && selectedVenv) return venvPackagesResult?.packages ?? [];
+    return [];
+  }, [activeTab, selectedGlobalEnv, globalPackagesResult, selectedProject, projectPackages, selectedVenv, venvPackagesResult]);
+
+  const sidebarLoading =
+    (activeTab === "global" && !!selectedGlobalEnv && loadingGlobalPkgs) ||
+    (activeTab === "projects" && !!selectedProject && loadingProjPkgs) ||
+    (activeTab === "venvs" && !!selectedVenv && loadingVenvPkgs);
+
+  const sidebarTitle = hasSelection
+    ? (selectedProject?.name ?? selectedVenv?.name ?? selectedGlobalEnv?.name ?? "Packages")
+    : "Packages";
+
+  const sidebarSubtitle = hasSelection
     ? `${sidebarPackages.length} packages`
-    : "Select an environment";
-  const hasSelection = !!(selectedProject || selectedVenv || selectedGlobalEnv);
+    : "Select an environment to view dependencies";
 
   // ── Listen for projects:updated and onDataChanged from main process ────
   useEffect(() => {
@@ -255,6 +313,136 @@ export default function Environments() {
       if (typeof unlisten2 === "function") unlisten2();
     };
   }, [refetchProjects, qc]);
+
+  // ── Rename Project State & Handlers ─────────────────────────────────────
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameTarget, setRenameTarget]       = useState<ProjectEnvironment | null>(null);
+  const [renameInput, setRenameInput]         = useState("");
+  const [renameError, setRenameError]         = useState<string | null>(null);
+  const [isConfirmStep, setIsConfirmStep]     = useState(false);
+  const [isRenaming, setIsRenaming]           = useState(false);
+
+  const handleOpenRename = (proj: ProjectEnvironment) => {
+    setRenameTarget(proj);
+    setRenameInput(proj.name);
+    setRenameError(null);
+    setIsConfirmStep(false);
+    setShowRenameModal(true);
+  };
+
+  const validateRename = (input: string, currentProj: ProjectEnvironment) => {
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+      return { valid: false, error: "Project name cannot be empty or contain only whitespace." };
+    }
+    if (trimmed.length > 214) {
+      return { valid: false, error: "Project name cannot exceed 214 characters." };
+    }
+    if (/[<>:"/\\|?*\x00-\x1f]/.test(trimmed)) {
+      return {
+        valid: false,
+        error: 'Project name cannot contain invalid characters (/ \\ : * ? " < > |).',
+      };
+    }
+    if (/^\.+$/.test(trimmed) || trimmed.endsWith(".")) {
+      return {
+        valid: false,
+        error: "Project name cannot consist only of dots or end with a dot.",
+      };
+    }
+    if (trimmed === currentProj.name.trim()) {
+      return {
+        valid: false,
+        isIdentical: true,
+        error: "New name is identical to the current name.",
+      };
+    }
+    const isDuplicate = (projects || []).some(
+      (p) =>
+        p.id !== currentProj.id &&
+        p._coreProjectId !== currentProj._coreProjectId &&
+        p.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (isDuplicate) {
+      return {
+        valid: false,
+        isDuplicate: true,
+        error: `A project named "${trimmed}" already exists. Please choose a different name.`,
+      };
+    }
+    return { valid: true, name: trimmed };
+  };
+
+  const handleProceedToConfirm = () => {
+    if (!renameTarget) return;
+    const res = validateRename(renameInput, renameTarget);
+    if (!res.valid) {
+      setRenameError(res.error || "Invalid project name.");
+      return;
+    }
+    setRenameError(null);
+    setIsConfirmStep(true);
+  };
+
+  const handleConfirmRename = async () => {
+    if (!renameTarget) return;
+    const res = validateRename(renameInput, renameTarget);
+    if (!res.valid) {
+      setRenameError(res.error || "Invalid project name.");
+      setIsConfirmStep(false);
+      return;
+    }
+
+    const trimmedName = res.name!;
+    setIsRenaming(true);
+    try {
+      const api = (window as any).electronAPI;
+      if (!api || !api.renameProject) {
+        throw new Error("Rename functionality is not available in current environment");
+      }
+
+      const result = await api.renameProject(renameTarget._coreProjectId || renameTarget.projectId, trimmedName);
+      if (result && result.unchanged) {
+        setShowRenameModal(false);
+        return;
+      }
+
+      // Update selected project immediately if it was renamed
+      if (selectedProject && (selectedProject.id === renameTarget.id || selectedProject._coreProjectId === renameTarget._coreProjectId)) {
+        setSelectedProject((prev) => (prev ? { ...prev, name: trimmedName } : prev));
+      }
+
+      // Invalidate all related queries
+      await refetchProjects();
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", "packages"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["/api/history"] });
+      qc.invalidateQueries({ queryKey: ["snapshots"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/status-breakdown"] });
+      qc.invalidateQueries({ queryKey: ["packages"] });
+
+      toast({
+        title: "Project Renamed",
+        description: `Successfully renamed "${renameTarget.name}" to "${trimmedName}".`,
+      });
+
+      setShowRenameModal(false);
+      setRenameTarget(null);
+      setRenameInput("");
+      setRenameError(null);
+      setIsConfirmStep(false);
+    } catch (err: any) {
+      toast({
+        title: "Rename Failed",
+        description: err?.message || "Failed to rename project.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRenaming(false);
+    }
+  };
 
   // ── Scan state ──────────────────────────────────────────────────────────
   const [scanningId,        setScanningId]        = useState<string | null>(null);
@@ -297,8 +485,9 @@ export default function Environments() {
 
   const removeVenvMutation = useMutation({
     mutationFn: (path: string) => (window as any).electronAPI.removeVenv(path),
-    onSuccess: () => {
+    onSuccess: (_, path) => {
       qc.invalidateQueries({ queryKey: ["venvs", "registered"] });
+      if (selectedVenv?.path === path) setSelectedVenv(null);
       toast({ title: "Venv removed" });
     },
   });
@@ -363,7 +552,8 @@ export default function Environments() {
 
   // ── Venv scan ───────────────────────────────────────────────────────────
   const handleScanForVenvs = async () => {
-    const dir = await (window as any).electronAPI.openDirectory();
+    const defaultPath = (settings as any)?.defaultVenvScanDir || undefined;
+    const dir = await (window as any).electronAPI.openDirectory(defaultPath);
     if (!dir) return;
     setIsScanningVenvs(true);
     scanVenvsMutation.mutate(dir, { onSettled: () => setIsScanningVenvs(false) });
@@ -382,22 +572,13 @@ export default function Environments() {
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <div className="flex-1 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-[18px] font-semibold text-on-surface leading-tight">Environment Management</h2>
-            <p className="text-[13px] text-muted-foreground mt-1">Monitor Global Systems, Projects, and Virtual Environments</p>
-          </div>
-          <Button
-            onClick={() => setShowCreate(true)}
-            className="primary-btn-solid h-9 px-4 rounded-lg text-[13px] font-medium"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            New Environment
-          </Button>
+        <div className="mb-6 space-y-1">
+          <h2 className="text-[18px] font-semibold text-on-surface leading-tight">Environment Management</h2>
+          <p className="text-[13px] text-muted-foreground">Monitor Global Systems, Projects, and Virtual Environments</p>
         </div>
 
         {/* ── Tabs ───────────────────────────────────────────────────────── */}
-        <Tabs defaultValue="global" className="w-full">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
           <TabsList className="bg-surface-container-lowest border border-card-border p-1 rounded-lg mb-6 h-10">
             <TabsTrigger value="global" className="rounded-md px-5 h-8 text-[13px] font-medium data-[state=active]:shadow-none">
               Global Systems
@@ -436,90 +617,106 @@ export default function Environments() {
               </div>
             ) : (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                {(!envs || envs.length === 0) && (
-                  <div className="col-span-2 text-center py-14 opacity-50">
-                    <Server className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-[14px] font-semibold text-on-surface">No global runtimes detected</p>
-                    <p className="text-[12px] text-muted-foreground mt-1">Add a global environment to start monitoring</p>
-                  </div>
-                )}
-                {envs?.map((env: Environment) => (
+                {(!envs || envs.length === 0) ? (
                   <div
-                    key={env.id}
-                    onClick={() => { setSelectedProject(null); setSelectedVenv(null); setSelectedGlobalEnv(env); }}
-                    className={cn(
-                      "bg-surface-container-lowest border p-5 rounded-lg transition-all group cursor-pointer",
-                      selectedGlobalEnv?.id === env.id
-                        ? "border-primary ring-1 ring-primary/20 shadow-[var(--shadow-premium-hover)]"
-                        : "border-card-border shadow-[var(--shadow-premium)] hover:shadow-[var(--shadow-premium-hover)]"
-                    )}
+                    onClick={() => setShowCreate(true)}
+                    className="col-span-1 xl:col-span-2 border-2 border-dashed border-card-border rounded-lg p-10 flex flex-col items-center justify-center gap-3 hover:bg-[#E8E9FF] hover:border-[#6366F1] transition-all cursor-pointer group min-h-[240px] text-center"
                   >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-                          <Server className="w-5 h-5" />
+                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-[#4338CA] group-hover:text-white">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-[15px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">No global environments detected</p>
+                      <p className="text-[13px] text-muted-foreground mt-1 group-hover:text-[#4338CA]/80 transition-colors max-w-sm">
+                        Click here to register a new system path or global runtime for auditing
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary mt-1 group-hover:text-[#4338CA]">
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Global Environment
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    {envs.map((env: Environment) => (
+                      <div
+                        key={env.id}
+                        onClick={() => handleToggleGlobalEnv(env)}
+                        className={cn(
+                          "bg-surface-container-lowest border p-5 rounded-lg transition-all group cursor-pointer",
+                          selectedGlobalEnv?.id === env.id
+                            ? "border-primary ring-1 ring-primary/20 shadow-[var(--shadow-premium-hover)] bg-surface-container-low/50"
+                            : "border-card-border shadow-[var(--shadow-premium)] hover:shadow-[var(--shadow-premium-hover)] hover:bg-[#F0F0FF] hover:border-[#6366F1]"
+                        )}
+                      >
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                              <Server className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0">
+                              <h3 className="text-[15px] font-semibold text-on-surface truncate">{env.name}</h3>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                <p className="text-[12px] text-muted-foreground uppercase tracking-wider">{env.type}</p>
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDelete(env.id as any, env.name); }}
+                            className="p-2 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
-                        <div className="min-w-0">
-                          <h3 className="text-[15px] font-semibold text-on-surface truncate">{env.name}</h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <p className="text-[12px] text-muted-foreground uppercase tracking-wider">{env.type}</p>
+                        <div className="space-y-2.5 pt-4 border-t border-card-border">
+                          {(env as any).version && (
+                            <div className="flex justify-between items-center gap-3">
+                              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Version</span>
+                              <span className="text-[12px] font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">{(env as any).version}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center gap-3">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Path</span>
+                            <span className="text-[12px] font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground truncate max-w-[200px]">{env.path}</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-3">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Packages</span>
+                            <span className="text-[13px] font-semibold text-on-surface">{env.packageCount ?? (env as any).package_count ?? 0}</span>
+                          </div>
+                          <div className="flex justify-between items-center gap-3">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Last Scan</span>
+                            <span className="text-[12px] text-muted-foreground">
+                              {env.lastScanned ? formatDistanceToNow(new Date(env.lastScanned), { addSuffix: true }) : "Never"}
+                            </span>
                           </div>
                         </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleScanGlobal(env.id as any); }}
+                          disabled={scanningId === (env.id as any)}
+                          className="w-full mt-5 h-9 ghost-btn rounded-md text-[13px] font-medium flex items-center justify-center gap-2"
+                        >
+                          <RefreshCw className={cn("w-4 h-4", scanningId === (env.id as any) && "animate-spin")} />
+                          {scanningId === (env.id as any) ? "Scanning..." : "Start Scan"}
+                        </button>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(env.id as any, env.name); }}
-                        className="p-2 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="space-y-2.5 pt-4 border-t border-card-border">
-                      {(env as any).version && (
-                        <div className="flex justify-between items-center gap-3">
-                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Version</span>
-                          <span className="text-[12px] font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">{(env as any).version}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center gap-3">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Path</span>
-                        <span className="text-[12px] font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground truncate max-w-[200px]">{env.path}</span>
-                      </div>
-                      <div className="flex justify-between items-center gap-3">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Packages</span>
-                        <span className="text-[13px] font-semibold text-on-surface">{env.packageCount ?? (env as any).package_count ?? 0}</span>
-                      </div>
-                      <div className="flex justify-between items-center gap-3">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Last Scan</span>
-                        <span className="text-[12px] text-muted-foreground">
-                          {env.lastScanned ? formatDistanceToNow(new Date(env.lastScanned), { addSuffix: true }) : "Never"}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleScanGlobal(env.id as any); }}
-                      disabled={scanningId === (env.id as any)}
-                      className="w-full mt-5 h-9 ghost-btn rounded-md text-[13px] font-medium flex items-center justify-center gap-2"
-                    >
-                      <RefreshCw className={cn("w-4 h-4", scanningId === (env.id as any) && "animate-spin")} />
-                      {scanningId === (env.id as any) ? "Scanning..." : "Start Scan"}
-                    </button>
-                  </div>
-                ))}
+                    ))}
 
-                {/* Add global env card */}
-                <div
-                  onClick={() => setShowCreate(true)}
-                  className="border-2 border-dashed border-card-border rounded-lg p-5 flex flex-col items-center justify-center gap-3 hover:bg-surface-container-low transition-colors cursor-pointer group min-h-[220px]"
-                >
-                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-primary group-hover:text-primary-foreground">
-                    <Plus className="w-5 h-5" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[14px] font-semibold text-on-surface">Add global environment</p>
-                    <p className="text-[12px] text-muted-foreground mt-1">Register a new system path for auditing</p>
-                  </div>
-                </div>
+                    {/* Add global env card */}
+                    <div
+                      onClick={() => setShowCreate(true)}
+                      className="border-2 border-dashed border-card-border rounded-lg p-5 flex flex-col items-center justify-center gap-3 hover:bg-[#E8E9FF] hover:border-[#6366F1] transition-all cursor-pointer group min-h-[220px]"
+                    >
+                      <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-[#4338CA] group-hover:text-white">
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[14px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">Add global environment</p>
+                        <p className="text-[12px] text-muted-foreground mt-1 group-hover:text-[#4338CA]/80 transition-colors">Register a new system path for auditing</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </TabsContent>
@@ -533,29 +730,42 @@ export default function Environments() {
                 ))}
               </div>
             ) : !projects || projects.length === 0 ? (
-              <div className="text-center py-16 opacity-60">
-                <Box className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-[15px] font-semibold text-on-surface">No projects initialized</p>
-                <p className="text-[13px] text-muted-foreground mt-2 leading-relaxed max-w-xs mx-auto">
-                  Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary">pg init</code> inside a project directory to register it with PackageGuard.
-                </p>
+              <div
+                onClick={() => {
+                  navigator.clipboard?.writeText("pg init");
+                  toast({ title: "Copied to clipboard", description: "Run 'pg init' in any project directory to register it." });
+                }}
+                className="border-2 border-dashed border-card-border rounded-lg p-10 flex flex-col items-center justify-center gap-3 hover:bg-[#E8E9FF] hover:border-[#6366F1] transition-all cursor-pointer group min-h-[240px] text-center"
+              >
+                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-[#4338CA] group-hover:text-white">
+                  <Box className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">No projects initialized</p>
+                  <p className="text-[13px] text-muted-foreground mt-1 max-w-sm leading-relaxed group-hover:text-[#4338CA]/80 transition-colors">
+                    Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary font-medium">pg init</code> inside a project directory to register it with PackageGuard.
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary mt-1 group-hover:text-[#4338CA]">
+                  Click to copy <code className="font-mono bg-muted px-1 py-0.5 rounded text-primary">pg init</code>
+                </span>
               </div>
             ) : (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 {projects.map((proj: ProjectEnvironment) => (
                   <div
                     key={proj.id}
-                    onClick={() => { setSelectedGlobalEnv(null); setSelectedVenv(null); setSelectedProject(proj); }}
+                    onClick={() => handleToggleProject(proj)}
                     className={cn(
                       "bg-surface-container-lowest border p-5 rounded-lg transition-all group cursor-pointer",
                       selectedProject?.id === proj.id
-                        ? "border-primary ring-1 ring-primary/20 shadow-[var(--shadow-premium-hover)]"
-                        : "border-card-border shadow-[var(--shadow-premium)] hover:shadow-[var(--shadow-premium-hover)]"
+                        ? "border-primary ring-1 ring-primary/20 shadow-[var(--shadow-premium-hover)] bg-surface-container-low/50"
+                        : "border-card-border shadow-[var(--shadow-premium)] hover:shadow-[var(--shadow-premium-hover)] hover:bg-[#F0F0FF] hover:border-[#6366F1]"
                     )}
                   >
                     {/* Card header */}
                     <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
                           <ProjectIcon envType={proj.environmentType} />
                         </div>
@@ -573,6 +783,31 @@ export default function Environments() {
                           </div>
                         </div>
                       </div>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-surface-container-high hover:text-on-surface transition-colors shrink-0"
+                            title="Project actions"
+                            aria-label="Project actions"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-md border-card-border bg-surface-container-lowest shadow-lg">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenRename(proj);
+                            }}
+                            className="cursor-pointer flex items-center gap-2 text-[13px]"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                            <span>Rename Project</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     {/* Card body */}
@@ -630,6 +865,25 @@ export default function Environments() {
                     </button>
                   </div>
                 ))}
+
+                {/* Add project placeholder card */}
+                <div
+                  onClick={() => {
+                    navigator.clipboard?.writeText("pg init");
+                    toast({ title: "Copied to clipboard", description: "Run 'pg init' in any project directory to register it." });
+                  }}
+                  className="border-2 border-dashed border-card-border rounded-lg p-5 flex flex-col items-center justify-center gap-3 hover:bg-[#E8E9FF] hover:border-[#6366F1] transition-all cursor-pointer group min-h-[220px] text-center"
+                >
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-[#4338CA] group-hover:text-white">
+                    <Box className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">Add another project</p>
+                    <p className="text-[12px] text-muted-foreground mt-1 group-hover:text-[#4338CA]/80 transition-colors">
+                      Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary font-medium">pg init</code> in project folder (click to copy)
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
           </TabsContent>
@@ -637,70 +891,92 @@ export default function Environments() {
           {/* ── VIRTUAL ENVS ───────────────────────────────────────────── */}
           <TabsContent value="venvs" className="space-y-5 mt-2">
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              {(!registeredVenvs || registeredVenvs.length === 0) && (
-                <div className="col-span-2 text-center py-10 opacity-50">
-                  <FolderOpen className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-[14px] font-semibold text-on-surface">No virtual environments discovered</p>
-                  <p className="text-[12px] text-muted-foreground mt-1">Use "Discover venvs" below to scan a directory</p>
-                </div>
-              )}
-              {registeredVenvs?.map((venv: any) => (
+              {(!registeredVenvs || registeredVenvs.length === 0) ? (
                 <div
-                  key={venv.path}
-                  onClick={() => { setSelectedGlobalEnv(null); setSelectedProject(null); setSelectedVenv(venv); }}
-                  className={cn(
-                    "bg-surface-container-lowest border p-5 rounded-lg transition-all group cursor-pointer",
-                    selectedVenv?.path === venv.path
-                      ? "border-primary ring-1 ring-primary/20 shadow-[var(--shadow-premium-hover)]"
-                      : "border-card-border shadow-[var(--shadow-premium)] hover:shadow-[var(--shadow-premium-hover)]"
-                  )}
+                  onClick={handleScanForVenvs}
+                  className="col-span-1 xl:col-span-2 border-2 border-dashed border-card-border rounded-lg p-10 flex flex-col items-center justify-center gap-3 hover:bg-[#E8E9FF] hover:border-[#6366F1] transition-all cursor-pointer group min-h-[240px] text-center"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
-                        <FolderOpen className="w-5 h-5" />
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-[#4338CA] group-hover:text-white">
+                    {isScanningVenvs ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FolderOpen className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">
+                      {isScanningVenvs ? "Scanning directory for virtual environments..." : "No virtual environments discovered"}
+                    </p>
+                    <p className="text-[13px] text-muted-foreground mt-1 group-hover:text-[#4338CA]/80 transition-colors max-w-sm">
+                      {isScanningVenvs
+                        ? "Please wait while we search for Python virtual environments."
+                        : "Click to select a directory and automatically discover Python virtual environments"}
+                    </p>
+                  </div>
+                  {!isScanningVenvs && (
+                    <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary mt-1 group-hover:text-[#4338CA]">
+                      <Search className="w-3.5 h-3.5" />
+                      Discover virtual environments
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {registeredVenvs.map((venv: any) => (
+                    <div
+                      key={venv.path}
+                      onClick={() => handleToggleVenv(venv)}
+                      className={cn(
+                        "bg-surface-container-lowest border p-5 rounded-lg transition-all group cursor-pointer",
+                        selectedVenv?.path === venv.path
+                          ? "border-primary ring-1 ring-primary/20 shadow-[var(--shadow-premium-hover)] bg-surface-container-low/50"
+                          : "border-card-border shadow-[var(--shadow-premium)] hover:shadow-[var(--shadow-premium-hover)] hover:bg-[#F0F0FF] hover:border-[#6366F1]"
+                      )}
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground shrink-0">
+                            <FolderOpen className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-[15px] font-semibold text-on-surface truncate">{venv.name}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              <p className="text-[12px] text-muted-foreground">Python venv</p>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeVenvMutation.mutate(venv.path); }}
+                          className="p-2 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
-                      <div className="min-w-0">
-                        <h3 className="text-[15px] font-semibold text-on-surface truncate">{venv.name}</h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          <p className="text-[12px] text-muted-foreground">Python venv</p>
+                      <div className="space-y-2.5 pt-4 border-t border-card-border">
+                        <div className="flex justify-between items-center gap-3">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Path</span>
+                          <span className="text-[12px] font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground truncate max-w-[200px]">{venv.path}</span>
+                        </div>
+                        <div className="flex justify-between items-center gap-3">
+                          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Python Version</span>
+                          <span className="text-[13px] font-semibold text-on-surface">{venv.pythonVersion ?? "Unknown"}</span>
                         </div>
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeVenvMutation.mutate(venv.path); }}
-                      className="p-2 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="space-y-2.5 pt-4 border-t border-card-border">
-                    <div className="flex justify-between items-center gap-3">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Path</span>
-                      <span className="text-[12px] font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground truncate max-w-[200px]">{venv.path}</span>
-                    </div>
-                    <div className="flex justify-between items-center gap-3">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Python Version</span>
-                      <span className="text-[13px] font-semibold text-on-surface">{venv.pythonVersion ?? "Unknown"}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                  ))}
 
-              {/* Discover venvs card */}
-              <div
-                onClick={handleScanForVenvs}
-                className="border-2 border-dashed border-card-border rounded-lg p-5 flex flex-col items-center justify-center gap-3 hover:bg-surface-container-low transition-colors cursor-pointer group min-h-[220px]"
-              >
-                <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-primary group-hover:text-primary-foreground">
-                  {isScanningVenvs ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-                </div>
-                <div className="text-center">
-                  <p className="text-[14px] font-semibold text-on-surface">{isScanningVenvs ? "Scanning..." : "Discover venvs"}</p>
-                  <p className="text-[12px] text-muted-foreground mt-1">Scan directory for virtual environments</p>
-                </div>
-              </div>
+                  {/* Discover venvs card */}
+                  <div
+                    onClick={handleScanForVenvs}
+                    className="border-2 border-dashed border-card-border rounded-lg p-5 flex flex-col items-center justify-center gap-3 hover:bg-[#E8E9FF] hover:border-[#6366F1] transition-all cursor-pointer group min-h-[220px]"
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-muted-foreground transition-all group-hover:bg-[#4338CA] group-hover:text-white">
+                      {isScanningVenvs ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[14px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">{isScanningVenvs ? "Scanning..." : "Discover venvs"}</p>
+                      <p className="text-[12px] text-muted-foreground mt-1 group-hover:text-[#4338CA]/80 transition-colors">Scan directory for virtual environments</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Discovery results */}
@@ -745,12 +1021,12 @@ export default function Environments() {
 
       {/* ── Package sidebar ─────────────────────────────────────────────── */}
       <PackageSidebar
-        title="Packages"
+        title={sidebarTitle}
         subtitle={sidebarSubtitle}
         packages={sidebarPackages}
         isLoading={sidebarLoading}
         hasSelection={hasSelection}
-        onViewInPackages={selectedVenv || selectedGlobalEnv ? handleViewInPackages : undefined}
+        onViewInPackages={hasSelection && (selectedVenv || selectedGlobalEnv) ? handleViewInPackages : undefined}
       />
 
       {/* ── Add Global Env Dialog ────────────────────────────────────────── */}
@@ -803,6 +1079,132 @@ export default function Environments() {
             <Button onClick={handleCreate} disabled={createEnv.isPending} className="primary-btn-solid h-11 px-6 rounded-md text-[13px] font-medium">
               {createEnv.isPending ? "Creating..." : "Confirm"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Rename Project Dialog ────────────────────────────────────────── */}
+      <Dialog
+        open={showRenameModal}
+        onOpenChange={(open) => {
+          if (!isRenaming) {
+            setShowRenameModal(open);
+            if (!open) {
+              setRenameTarget(null);
+              setRenameInput("");
+              setRenameError(null);
+              setIsConfirmStep(false);
+            }
+          }
+        }}
+      >
+        <DialogContent className="rounded-lg border-card-border bg-surface-container-lowest shadow-[0_20px_60px_rgba(0,0,0,0.15)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[16px] font-semibold text-on-surface">Rename Project</DialogTitle>
+          </DialogHeader>
+
+          {!isConfirmStep ? (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg bg-surface-container-low p-3.5 border border-card-border space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Current Name</span>
+                  <span className="text-[13px] font-semibold text-on-surface truncate max-w-[220px]" title={renameTarget?.name}>
+                    {renameTarget?.name}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Path</span>
+                  <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[240px]" title={renameTarget?.path}>
+                    {renameTarget?.path}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="rename-project-input" className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  New Project Name
+                </Label>
+                <Input
+                  id="rename-project-input"
+                  value={renameInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setRenameInput(e.target.value);
+                    if (renameError) setRenameError(null);
+                  }}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleProceedToConfirm();
+                    }
+                  }}
+                  placeholder="e.g. My Renamed Project"
+                  className={cn(
+                    "h-11 rounded-md border-card-border bg-surface-container-low focus:ring-primary text-[14px]",
+                    renameError && "border-destructive focus-visible:ring-destructive"
+                  )}
+                  autoFocus
+                />
+                {renameError && (
+                  <p className="text-[12px] text-destructive flex items-center gap-1.5 mt-1 font-medium">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{renameError}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 py-3">
+              <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
+                <p className="text-[13px] text-on-surface leading-relaxed">
+                  Rename &ldquo;<span className="font-semibold text-primary">{renameTarget?.name}</span>&rdquo; to &ldquo;<span className="font-semibold text-primary">{renameInput.trim()}</span>&rdquo;? This change will be reflected throughout PackageGuard. Existing scan history, snapshots, and package records will be preserved.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-3">
+            {!isConfirmStep ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRenameModal(false)}
+                  className="h-10 rounded-md px-4 text-[13px] font-medium"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleProceedToConfirm}
+                  className="primary-btn-solid h-10 px-5 rounded-md text-[13px] font-medium"
+                >
+                  Save Changes
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={isRenaming}
+                  onClick={() => setIsConfirmStep(false)}
+                  className="h-10 rounded-md px-4 text-[13px] font-medium"
+                >
+                  Back
+                </Button>
+                <Button
+                  disabled={isRenaming}
+                  onClick={handleConfirmRename}
+                  className="primary-btn-solid h-10 px-5 rounded-md text-[13px] font-medium flex items-center gap-2"
+                >
+                  {isRenaming ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Renaming...</span>
+                    </>
+                  ) : (
+                    <span>Confirm Rename</span>
+                  )}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

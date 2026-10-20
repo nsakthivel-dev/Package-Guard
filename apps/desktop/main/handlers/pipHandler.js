@@ -107,9 +107,24 @@ function getPipCommand(envPath) {
 
   // If we couldn't find a specific pip/python in the provided path, return null
   return null;
-} 
+}
+
+function validatePipPackage(packageName, targetVersion) {
+  if (!packageName || typeof packageName !== 'string' || !/^[a-zA-Z0-9_\-\.]+(\[[a-zA-Z0-9_\-\.,]+\])?$/.test(packageName.trim())) {
+    throw new Error(`Invalid Python package name: "${packageName}"`);
+  }
+  if (targetVersion && (typeof targetVersion !== 'string' || !/^[a-zA-Z0-9_\-\.\^\~><=@+ ]+$/.test(targetVersion.trim()))) {
+    throw new Error(`Invalid package version: "${targetVersion}"`);
+  }
+}
 
 async function updatePackage(packageName, targetVersion, envPath, onProgress) { 
+  try {
+    validatePipPackage(packageName, targetVersion);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   return new Promise(async (resolve) => { 
     let resolvedPath = getPipCommand(envPath); 
 
@@ -273,6 +288,12 @@ function parseErrorMessage(raw) {
 } 
 
 async function deletePackage(packageName, envPath) {
+  try {
+    validatePipPackage(packageName);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   return new Promise(async (resolve) => {
     let resolvedPath = getPipCommand(envPath); 
 

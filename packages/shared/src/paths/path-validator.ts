@@ -82,8 +82,33 @@ export function assertSafeWritePath(targetPath: string): void {
 }
 
 export function assertInsideDirectory(targetPath: string, allowedRoot: string): void {
-  const resolvedTarget = path.resolve(targetPath);
-  const resolvedRoot   = path.resolve(allowedRoot);
+  if (!targetPath || typeof targetPath !== 'string' || targetPath.trim().length === 0) {
+    throw new PathValidationError(
+      'Path validation failed: targetPath is empty or not a string.',
+      String(targetPath),
+      'empty-path',
+    );
+  }
+  if (!allowedRoot || typeof allowedRoot !== 'string' || allowedRoot.trim().length === 0) {
+    throw new PathValidationError(
+      'Path validation failed: allowedRoot is empty or not a string.',
+      String(allowedRoot),
+      'empty-path',
+    );
+  }
+  if (targetPath.includes('\0') || allowedRoot.includes('\0')) {
+    throw new PathValidationError(
+      'Path validation failed: path contains null bytes.',
+      targetPath,
+      'null-byte',
+    );
+  }
+
+  const cleanTarget = path.normalize(targetPath);
+  const cleanRoot   = path.normalize(allowedRoot);
+
+  const resolvedTarget = path.resolve(cleanTarget);
+  const resolvedRoot   = path.resolve(cleanRoot);
 
   const normTarget = process.platform === 'win32' ? resolvedTarget.toLowerCase() : resolvedTarget;
   const normRoot   = process.platform === 'win32' ? resolvedRoot.toLowerCase()   : resolvedRoot;
@@ -93,6 +118,47 @@ export function assertInsideDirectory(targetPath: string, allowedRoot: string): 
       `Path validation failed: "${resolvedTarget}" is not inside "${resolvedRoot}". ` +
       `Possible path-traversal attempt.`,
       resolvedTarget,
+      'path-traversal',
+    );
+  }
+}
+
+export function assertSafeSnapshotId(snapshotId: string): void {
+  if (!snapshotId || typeof snapshotId !== 'string' || snapshotId.trim().length === 0) {
+    throw new PathValidationError(
+      'Snapshot ID validation failed: ID is empty or not a string.',
+      String(snapshotId),
+      'invalid-snapshot-id',
+    );
+  }
+  const trimmed = snapshotId.trim();
+  if (/[/\\:\x00]|\.\./.test(trimmed)) {
+    throw new PathValidationError(
+      `Snapshot ID validation failed: "${trimmed}" contains illegal path separators or traversal characters.`,
+      trimmed,
+      'invalid-snapshot-id',
+    );
+  }
+}
+
+export function assertSafeRelativePath(relPath: string): void {
+  if (!relPath || typeof relPath !== 'string' || relPath.trim().length === 0) {
+    throw new PathValidationError(
+      'Relative path validation failed: path is empty or not a string.',
+      String(relPath),
+      'empty-path',
+    );
+  }
+  const trimmed = relPath.trim();
+  if (
+    path.isAbsolute(trimmed) ||
+    /^[a-zA-Z]:/.test(trimmed) ||
+    trimmed.includes('\0') ||
+    trimmed.split(/[/\\]/).some((segment) => segment === '..')
+  ) {
+    throw new PathValidationError(
+      `Relative path validation failed: "${trimmed}" contains path-traversal sequences or is absolute.`,
+      trimmed,
       'path-traversal',
     );
   }

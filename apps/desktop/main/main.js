@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog, Tray, nativeImage, Notification, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, Tray, nativeImage, Notification, shell, session } = require('electron');
 
 // ── Windows: set AppUserModelId BEFORE app.requestSingleInstanceLock() ────────
 // This must be the very first Electron call so that the taskbar, toast
@@ -15,6 +15,46 @@ if (!gotTheLock) {
   const path = require('path');
   const fs = require('fs');
 
+  // ── Load environment variables from .env file ──────────────────────────────
+  (function loadEnv() {
+    const os = require('os');
+    const candidatePaths = [
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(__dirname, '../../../.env'),
+      path.resolve(__dirname, '../../../../.env'),
+      path.resolve(__dirname, '../../.env'),
+      path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'PackageGuard', '.env'),
+      path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Package Guard', '.env'),
+      path.join(os.homedir(), '.packageguard', '.env'),
+      path.join(app.getPath('userData'), '.env')
+    ];
+    for (const p of candidatePaths) {
+      try {
+        if (fs.existsSync(p)) {
+          const content = fs.readFileSync(p, 'utf8');
+          for (const line of content.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const eqIdx = trimmed.indexOf('=');
+            if (eqIdx > 0) {
+              const k = trimmed.slice(0, eqIdx).trim();
+              let v = trimmed.slice(eqIdx + 1).trim();
+              if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+                v = v.slice(1, -1);
+              }
+              const isPlaceholder = !v || v.includes('your-google-client') || v.includes('your-client') || v === 'null' || v === 'undefined';
+              if (!isPlaceholder) {
+                if (!process.env[k] || process.env[k].includes('your-google-client') || process.env[k] === 'null' || process.env[k] === 'undefined') {
+                  process.env[k] = v;
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  })();
+
   // ── Runtime path manager — must be required BEFORE any handler ────────────
   // Establishes AppData\Roaming\Package Guard as the data root and ensures
   // every sub-directory exists before any handler tries to read/write files.
@@ -23,6 +63,7 @@ if (!gotTheLock) {
 
   // ── Structured logger — require after runtimePaths so log dir is known ────
   const log = require('./logger');
+  const pathGuard = require('./pathGuard');
 
   // ── Bootstrap: create runtime directory tree ──────────────────────────────
   const firstLaunch = isFirstLaunch();
@@ -96,6 +137,7 @@ if (!gotTheLock) {
   const venvHandler = require('./handlers/venvHandler');
   const cliInstaller = require('./handlers/cliInstaller');
   const projectEnvHandler = require('./handlers/projectEnvironmentHandler');
+  const authHandler = require('./handlers/authHandler');
   const { PipeServer } = require('./pipe-server');
   const { openDatabase } = require('@package-guard/shared/db');
   const {
@@ -462,6 +504,35 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // Security: Restrict renderer window creation and open external links safely
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        shell.openExternal(url);
+      }
+    } catch (_) {}
+    return { action: 'deny' };
+  });
+
+  // Security: Prevent in-app navigation away from application bundle / dev server
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const isAllowedOrigin =
+        navigationUrl.startsWith('file:') ||
+        (isDev && devServerUrl && navigationUrl.startsWith(devServerUrl));
+      if (!isAllowedOrigin) {
+        event.preventDefault();
+        const parsed = new URL(navigationUrl);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+          shell.openExternal(navigationUrl);
+        }
+      }
+    } catch (_) {
+      event.preventDefault();
+    }
+  });
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error('[MAIN] did-fail-load:', errorCode, errorDescription, validatedURL);
   });
@@ -519,6 +590,32 @@ app.whenReady().then(async () => {
     log.error('startup', `Failed to open SQLite database: ${dbErr.message}`);
   }
 
+  // ── Fresh install validation & session cleanup ───────────────────────────
+  // If first launch marker was absent, verify and purge any leftover Chromium
+  // session partitions and stale auth tokens from prior/corrupted installs.
+  if (firstLaunch) {
+    log.info('startup', 'Fresh install detected: verifying and purging any stale Chromium session data and leftover tokens...');
+    try {
+      if (session && session.defaultSession) {
+        await session.defaultSession.clearStorageData({
+          storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage']
+        });
+        log.info('startup', 'Purged default Chromium session storage on initial launch');
+      }
+    } catch (sessionErr) {
+      log.warn('startup', `Could not clear default session storage on initial launch: ${sessionErr.message}`);
+    }
+
+    if (sqliteDb) {
+      try {
+        sqliteDb.prepare('DELETE FROM auth_sessions').run();
+        log.info('startup', 'Cleaned leftover auth sessions from database on initial launch');
+      } catch (authErr) {
+        log.warn('startup', `Could not clean leftover auth sessions: ${authErr.message}`);
+      }
+    }
+  }
+
   // Recover any offline PENDING events -> SYNCED
   recoverPendingEvents();
 
@@ -570,6 +667,12 @@ app.whenReady().then(async () => {
   // Wire project environment handler to SQLite db and core engine getter
   if (typeof projectEnvHandler.setDb === 'function') {
     projectEnvHandler.setDb(() => sqliteDb);
+  }
+  if (typeof authHandler.setDb === 'function') {
+    authHandler.setDb(() => sqliteDb);
+  }
+  if (typeof authHandler.setMainWindow === 'function' && mainWindow) {
+    authHandler.setMainWindow(mainWindow);
   }
   projectEnvHandler.setGetCore(getCore);
 
@@ -690,10 +793,20 @@ ipcMain.handle('window:close', () => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
 });
 
-ipcMain.handle('dialog:open-directory', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle('dialog:open-directory', async (_evt, defaultPath) => {
+  const settings = dbHandler.getSettings();
+  const targetDefault = (typeof defaultPath === 'string' && defaultPath.trim())
+    ? defaultPath.trim()
+    : (settings.defaultVenvScanDir || undefined);
+
+  const options = {
     properties: ['openDirectory']
-  });
+  };
+  if (targetDefault) {
+    options.defaultPath = targetDefault;
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow, options);
   if (result.canceled) return null;
   return result.filePaths[0];
 });
@@ -734,6 +847,14 @@ ipcMain.handle('app:uninstall', async (_evt, { mode } = {}) => {
   log.logUninstall(mode || 'app-only', rp.dataRoot);
 
   if (mode === 'full') {
+    try {
+      if (session && session.defaultSession) {
+        await session.defaultSession.clearStorageData({
+          storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage']
+        });
+      }
+    } catch (_) {}
+
     // Close all windows first so no handles are open on data files
     BrowserWindow.getAllWindows().forEach(w => { try { w.destroy(); } catch (_) {} });
     // Give OS a moment to release file handles
@@ -849,7 +970,7 @@ async function createAutoSnapshot(env, packageName = null, packageVersion = null
   }
 }
 
-function getStatus(installed, latest) {
+function getStatus(installed, latest, securityLevel = (dbHandler.getSettings()?.securityLevel || 'Standard')) {
   if (!installed || !latest) return 'unknown';
   if (installed === latest) return 'up-to-date';
 
@@ -862,8 +983,14 @@ function getStatus(installed, latest) {
     const lV = lParts[i] || 0;
     if (lV > iV) {
       if (i === 0) return 'major';
-      if (i === 1) return 'minor';
-      if (i === 2) return 'patch';
+      if (i === 1) {
+        // Under Relaxed mode, only major changes (breaking/high drift) are flagged
+        return securityLevel === 'Relaxed' ? 'up-to-date' : 'minor';
+      }
+      if (i === 2) {
+        // Under Relaxed mode, patch changes are treated as safe/up-to-date
+        return securityLevel === 'Relaxed' ? 'up-to-date' : 'patch';
+      }
     }
     if (iV > lV) return 'up-to-date'; // Installed is ahead
   }
@@ -887,11 +1014,23 @@ ipcMain.handle('dashboard:summary', async () => {
       minorUpdates: 0,
       patchUpdates: 0,
       failedPackages: 0,
+      ignoredPackages: 0,
       lastScanAt: null
     };
   }
 
   const includeVenvs = settings.includeVenvsInDashboard !== false;
+  const ignored = new Set(
+    (settings.ignoredPackages || [])
+      .map(p => typeof p === 'string' ? p.trim().toLowerCase() : '')
+      .filter(Boolean)
+  );
+  const isPkgIgnored = (p) => {
+    if (p.status === 'ignored') return true;
+    const name = p.name ? p.name.trim().toLowerCase() : '';
+    return ignored.has(name) || ignored.has(name.replace(/[._]/g, '-'));
+  };
+
   const envs = dbHandler.getEnvironments();
   const venvs = dbHandler.getVenvs();
   const allPackages = [];
@@ -908,13 +1047,16 @@ ipcMain.handle('dashboard:summary', async () => {
     }
   }
 
+  const activePackages = allPackages.filter(p => !isPkgIgnored(p));
+  const ignoredCount = allPackages.length - activePackages.length;
+
   const totalEnvironments = envs.length + (includeVenvs ? venvs.length : 0);
 
-  const upToDate = allPackages.filter(p => p.status === 'up-to-date').length;
-  const patchUpdates = allPackages.filter(p => p.status === 'patch').length;
-  const minorUpdates = allPackages.filter(p => p.status === 'minor').length;
-  const majorUpdates = allPackages.filter(p => p.status === 'major').length;
-  const failedPackages = allPackages.filter(p => p.status === 'failed').length;
+  const upToDate = activePackages.filter(p => p.status === 'up-to-date').length;
+  const patchUpdates = activePackages.filter(p => p.status === 'patch').length;
+  const minorUpdates = activePackages.filter(p => p.status === 'minor').length;
+  const majorUpdates = activePackages.filter(p => p.status === 'major').length;
+  const failedPackages = activePackages.filter(p => p.status === 'failed').length;
 
   const lastScanEnv = envs.reduce((latest, current) => {
     if (!latest || (current.last_scanned && current.last_scanned > latest.last_scanned)) return current;
@@ -923,6 +1065,8 @@ ipcMain.handle('dashboard:summary', async () => {
 
   return {
     totalPackages: allPackages.length,
+    activePackages: activePackages.length,
+    ignoredPackages: ignoredCount,
     totalEnvironments,
     totalVenvs: includeVenvs ? venvs.length : 0,
     upToDate,
@@ -942,6 +1086,18 @@ ipcMain.handle('dashboard:status-breakdown', async () => {
   }
 
   const includeVenvs = settings.includeVenvsInDashboard !== false;
+  const ignored = new Set(
+    (settings.ignoredPackages || [])
+      .map(p => typeof p === 'string' ? p.trim().toLowerCase() : '')
+      .filter(Boolean)
+  );
+
+  const isPkgIgnored = (p) => {
+    if (p.status === 'ignored') return true;
+    const name = p.name ? p.name.trim().toLowerCase() : '';
+    return ignored.has(name) || ignored.has(name.replace(/[._]/g, '-'));
+  };
+
   const envs = [...dbHandler.getEnvironments()];
   if (includeVenvs) {
     const venvs = dbHandler.getVenvs();
@@ -951,15 +1107,18 @@ ipcMain.handle('dashboard:status-breakdown', async () => {
   }
   return envs.map(env => {
     const pkgs = dbHandler.getPackages(env.id);
+    const active = pkgs.filter(p => !isPkgIgnored(p));
+    const ignoredCount = pkgs.length - active.length;
     return {
       environmentId: env.id,
       environmentName: env.name,
-      upToDate: pkgs.filter(p => p.status === 'up-to-date').length,
-      patch: pkgs.filter(p => p.status === 'patch').length,
-      minor: pkgs.filter(p => p.status === 'minor').length,
-      major: pkgs.filter(p => p.status === 'major').length,
-      failed: pkgs.filter(p => p.status === 'failed').length,
-      unknown: pkgs.filter(p => p.status === 'unknown').length
+      upToDate: active.filter(p => p.status === 'up-to-date').length,
+      patch: active.filter(p => p.status === 'patch').length,
+      minor: active.filter(p => p.status === 'minor').length,
+      major: active.filter(p => p.status === 'major').length,
+      failed: active.filter(p => p.status === 'failed').length,
+      unknown: active.filter(p => p.status === 'unknown').length,
+      ignored: ignoredCount
     };
   });
 });
@@ -1607,13 +1766,38 @@ ipcMain.handle('update:batch', async (event, { packages, envPath }) => {
 ipcMain.handle('versions:check', async (_, packages) => {
   const axios = require('axios');
   const settings = dbHandler.getSettings();
-  const BATCH = Math.max(1, settings.concurrencyLimit ?? 10);
+  const concurrency = Math.max(1, settings.concurrencyLimit ?? 5);
   const cacheMs = (settings.cacheDurationHours ?? 6) * 60 * 60 * 1000;
   const cutoff = Date.now() - cacheMs;
   const results = [];
   const toFetch = [];
 
+  const ignoredList = Array.isArray(settings.ignoredPackages)
+    ? settings.ignoredPackages.map(p => (typeof p === 'string' ? p.trim().toLowerCase() : '')).filter(Boolean)
+    : [];
+  const ignoredSet = new Set(ignoredList);
+  const securityLevel = settings.securityLevel || 'Standard';
+
   for (const pkg of packages) {
+    const rawName = pkg.name ? pkg.name.trim().toLowerCase() : '';
+    const normPipName = rawName.replace(/[._]/g, '-');
+    const isIgnored = ignoredSet.has(rawName) || ignoredSet.has(normPipName);
+
+    if (isIgnored) {
+      results.push({
+        name: pkg.name,
+        latest: pkg.installedVersion || 'ignored',
+        status: 'ignored',
+        ecosystem: pkg.ecosystem,
+        ignored: true,
+      });
+      dbHandler.upsertPackage({
+        ...pkg,
+        status: 'ignored',
+      }, true);
+      continue;
+    }
+
     const envId = pkg.environmentId || pkg.envId;
     const existing = envId
       ? dbHandler.getPackages(envId).find((p) => {
@@ -1629,7 +1813,7 @@ ipcMain.handle('versions:check', async (_, packages) => {
       results.push({
         name: pkg.name,
         latest: existing.latestVersion,
-        status: existing.status || getStatus(pkg.installedVersion, existing.latestVersion),
+        status: existing.status || getStatus(pkg.installedVersion, existing.latestVersion, securityLevel),
         ecosystem: pkg.ecosystem,
       });
     } else {
@@ -1637,58 +1821,62 @@ ipcMain.handle('versions:check', async (_, packages) => {
     }
   }
 
-  for (let i = 0; i < toFetch.length; i += BATCH) {
-    const batch = toFetch.slice(i, i + BATCH);
-    const settled = await Promise.allSettled(
-      batch.map(async (pkg) => {
-        const ecosystem = pkg.ecosystem;
-        const name = ecosystem === 'npm'
-          ? pkg.name
-          : pkg.name.toLowerCase().replace(/[._]/g, '-');
+  // Rolling concurrency queue: active workers yield immediately upon package completion
+  const queue = [...toFetch];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const pkg = queue.shift();
+      if (!pkg) break;
+      const ecosystem = pkg.ecosystem;
+      const isNpmCompat = ecosystem === 'npm' || ecosystem === 'pnpm' || ecosystem === 'yarn';
+      const name = isNpmCompat
+        ? pkg.name
+        : pkg.name.toLowerCase().replace(/[._]/g, '-');
 
-        try {
-          let latest;
-          if (ecosystem === 'npm') {
-            const res = await axios.get(
-              `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`,
-              { timeout: 8000 }
-            );
-            latest = res.data.version;
-          } else {
-            const res = await axios.get(
-              `https://pypi.org/pypi/${name}/json`,
-              { timeout: 8000 }
-            );
-            latest = res.data.info.version;
-          }
-
-          if (!latest) throw new Error('No version found in registry');
-
-          const status = getStatus(pkg.installedVersion, latest);
-          const result = { name: pkg.name, latest, status, ecosystem: pkg.ecosystem };
-
-          dbHandler.upsertPackage({
-            ...pkg,
-            latestVersion: latest,
-            status: status,
-          }, true);
-
-          return result;
-        } catch (err) {
-          console.error(`[VERSION FAIL] ${pkg.name} (${ecosystem}):`, err.message);
-          return { name: pkg.name, latest: null, status: 'unknown', ecosystem: pkg.ecosystem };
+      try {
+        let latest;
+        let description = null;
+        let homepage = null;
+        if (isNpmCompat) {
+          const res = await axios.get(
+            `https://registry.npmjs.org/${encodeURIComponent(name)}/latest`,
+            { timeout: 8000 }
+          );
+          latest = res.data.version;
+          description = typeof res.data.description === 'string' ? res.data.description.trim() : null;
+          homepage = typeof res.data.homepage === 'string' ? res.data.homepage : null;
+        } else {
+          const res = await axios.get(
+            `https://pypi.org/pypi/${name}/json`,
+            { timeout: 8000 }
+          );
+          latest = res.data.info.version;
+          description = typeof res.data.info.summary === 'string' ? res.data.info.summary.trim() : null;
+          homepage = res.data.info.home_page || res.data.info.project_urls?.Homepage || null;
         }
-      })
-    );
 
-    settled.forEach((s) => {
-      if (s.status === 'fulfilled') results.push(s.value);
-    });
+        if (!latest) throw new Error('No version found in registry');
 
-    if (i + BATCH < toFetch.length) {
-      await new Promise((r) => setTimeout(r, 50));
+        const status = getStatus(pkg.installedVersion, latest, securityLevel);
+        const result = { name: pkg.name, latest, status, ecosystem: pkg.ecosystem, description, homepage };
+
+        dbHandler.upsertPackage({
+          ...pkg,
+          latestVersion: latest,
+          status: status,
+          description: description || pkg.description || null,
+          homepageUrl: homepage || pkg.homepageUrl || null,
+        }, true);
+
+        results.push(result);
+      } catch (err) {
+        console.error(`[VERSION FAIL] ${pkg.name} (${ecosystem}):`, err.message);
+        results.push({ name: pkg.name, latest: null, status: 'unknown', ecosystem: pkg.ecosystem });
+      }
     }
-  }
+  });
+
+  await Promise.all(workers);
 
   dbHandler.saveStorage();
   return results;
@@ -1700,6 +1888,205 @@ ipcMain.handle('settings:update', (_, settings) => {
   const result = dbHandler.updateSettings(settings);
   setupBackgroundScan();
   return result;
+});
+
+// Dynamic Hardware Detection & System Capabilities
+ipcMain.handle('system:info', () => {
+  const os = require('os');
+  const cpus = os.cpus() || [];
+  const logicalCores = Math.max(1, cpus.length || 4);
+  const defaultConcurrency = Math.max(2, Math.min(Math.floor(logicalCores / 2), 6));
+  const maxConcurrency = logicalCores <= 4 ? 4 : 10;
+  return {
+    logicalCores,
+    defaultConcurrency,
+    maxConcurrency,
+  };
+});
+
+// Authentication & User Profile
+ipcMain.handle('auth:get-session', async () => {
+  return authHandler.getSession();
+});
+
+ipcMain.handle('auth:get-accounts', async () => {
+  return authHandler.getAllAccounts();
+});
+
+ipcMain.handle('auth:switch-account', async (_evt, userId) => {
+  return authHandler.switchAccount(userId);
+});
+
+ipcMain.handle('auth:login-google', async (_evt, options = {}) => {
+  return authHandler.loginWithGoogle(options, dbHandler);
+});
+
+ipcMain.handle('auth:update-profile', async (_evt, data) => {
+  return authHandler.updateProfile(data, dbHandler);
+});
+
+ipcMain.handle('profile:select-photo', async () => {
+  return authHandler.selectProfilePhoto(mainWindow);
+});
+
+ipcMain.handle('profile:save-photo', async (_evt, { userId, filePath, dataUrl, ext } = {}) => {
+  return authHandler.saveProfilePhoto(userId, { filePath, dataUrl, ext }, dbHandler);
+});
+
+ipcMain.handle('profile:remove-photo', async (_evt, userId) => {
+  return authHandler.removeProfilePhoto(userId, dbHandler);
+});
+
+ipcMain.handle('auth:logout', async () => {
+  return authHandler.logout();
+});
+
+ipcMain.handle('auth:signout', async () => {
+  try {
+    // 1. Clear default session cookies, cache, and storage
+    if (session && session.defaultSession) {
+      await session.defaultSession.clearStorageData({
+        storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage']
+      });
+    }
+  } catch (err) {
+    log.warn('auth', `Error clearing Chromium session storage: ${err.message}`);
+  }
+
+  // 2. Clear credentials from SQLite / secure storage
+  if (typeof dbHandler.clearAuthTokens === 'function') {
+    dbHandler.clearAuthTokens();
+  }
+  if (typeof authHandler.clearAuthTokens === 'function') {
+    await authHandler.clearAuthTokens();
+  } else if (typeof authHandler.logout === 'function') {
+    await authHandler.logout();
+  }
+
+  return { success: true };
+});
+
+ipcMain.handle('session:clear-all', async () => {
+  try {
+    if (session && session.defaultSession) {
+      await session.defaultSession.clearStorageData({
+        storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage']
+      });
+    }
+  } catch (err) {
+    log.warn('auth', `Error clearing Chromium session storage: ${err.message}`);
+  }
+
+  if (typeof dbHandler.clearAuthTokens === 'function') {
+    dbHandler.clearAuthTokens();
+  }
+  if (typeof authHandler.clearAuthTokens === 'function') {
+    await authHandler.clearAuthTokens();
+  } else if (typeof authHandler.logout === 'function') {
+    await authHandler.logout();
+  }
+
+  return { success: true };
+});
+
+ipcMain.handle('auth:delete-account', async (_evt, { userId, confirmation } = {}) => {
+  return authHandler.deleteAccount(userId, confirmation);
+});
+
+ipcMain.handle('auth:get-config', async () => {
+  return authHandler.getAuthConfig(dbHandler);
+});
+
+ipcMain.handle('auth:set-config', async (_evt, config) => {
+  return authHandler.saveAuthConfig(dbHandler, config);
+});
+
+// Profile Storage Location
+function validateDirectoryWritable(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
+    const testFile = path.join(dirPath, `.pg_perm_test_${Date.now()}`);
+    fs.writeFileSync(testFile, 'test', 'utf8');
+    fs.unlinkSync(testFile);
+    return { ok: true, isWritable: true };
+  } catch (err) {
+    return { ok: false, isWritable: false, error: err.message || 'Directory is not writable' };
+  }
+}
+
+ipcMain.handle('profile:get-storage-path', async () => {
+  const settings = dbHandler.getSettings() || {};
+  const defaultPath = path.join(rp.dataRoot, 'profiles');
+  const currentPath = settings.profileStoragePath || defaultPath;
+  try {
+    if (!fs.existsSync(currentPath)) {
+      fs.mkdirSync(currentPath, { recursive: true });
+    }
+  } catch { /* ignore */ }
+  const validation = validateDirectoryWritable(currentPath);
+  return {
+    currentPath,
+    defaultPath,
+    isDefault: currentPath === defaultPath,
+    isWritable: validation.isWritable,
+    error: validation.error || null,
+    systemPaths: {
+      dataRoot: rp.dataRoot,
+      database: rp.paths.dbFile,
+      snapshots: rp.paths.snapshots,
+      config: rp.paths.config,
+      logs: rp.paths.logs,
+    }
+  };
+});
+
+ipcMain.handle('profile:select-storage-dir', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Profile Storage Directory',
+    properties: ['openDirectory', 'createDirectory'],
+    buttonLabel: 'Select Folder',
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths.length) {
+    return null;
+  }
+  const selectedPath = result.filePaths[0];
+  try {
+    pathGuard.assertSafeWritePath(selectedPath);
+  } catch (err) {
+    return {
+      path: selectedPath,
+      isWritable: false,
+      error: err.message,
+    };
+  }
+  const validation = validateDirectoryWritable(selectedPath);
+  return {
+    path: selectedPath,
+    isWritable: validation.isWritable,
+    error: validation.error || null,
+  };
+});
+
+ipcMain.handle('profile:set-storage-path', async (_evt, newPath) => {
+  if (typeof newPath !== 'string' || !newPath.trim()) {
+    return { ok: false, error: 'Invalid directory path provided.' };
+  }
+  const cleanPath = path.normalize(newPath.trim());
+  const targetDir = path.resolve(cleanPath);
+  try {
+    pathGuard.assertSafeWritePath(targetDir);
+  } catch (err) {
+    return { ok: false, error: `Invalid storage path: ${err.message}` };
+  }
+  const validation = validateDirectoryWritable(targetDir);
+  if (!validation.isWritable) {
+    return { ok: false, error: `Directory is not accessible or writable: ${validation.error}` };
+  }
+  dbHandler.updateSettings({ profileStoragePath: targetDir });
+  return { ok: true, path: targetDir };
 });
 
 // Snapshots
@@ -1789,14 +2176,21 @@ ipcMain.handle('snapshots:create', async (_, data) => {
   return { success: true };
 });
 ipcMain.handle('snapshots:delete', async (_, id) => {
-  const snapshotId = String(id);
+  const snapshotId = String(id || '').trim();
+  const pathGuard = require('./pathGuard');
+  try {
+    pathGuard.assertSafeSnapshotId(snapshotId);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
   const db = sqliteDb || (projectEnvHandler.getDb ? projectEnvHandler.getDb() : null);
   if (db) {
     try {
       const { deleteSnapshotById } = require('@package-guard/shared/repository');
       const { getSnapshotStorageDir } = require('@package-guard/shared/paths');
       const storageRoot = getSnapshotStorageDir();
-      const snapshotDir = path.join(storageRoot, snapshotId);
+      const snapshotDir = path.resolve(storageRoot, snapshotId);
+      pathGuard.assertInsideDirectory(snapshotDir, storageRoot);
       if (fs.existsSync(snapshotDir)) {
         fs.rmSync(snapshotDir, { recursive: true, force: true });
       }
@@ -1809,7 +2203,13 @@ ipcMain.handle('snapshots:delete', async (_, id) => {
   return { success: true };
 });
 ipcMain.handle('snapshots:restore', async (event, id) => {
-  const snapshotId = String(id);
+  const snapshotId = String(id || '').trim();
+  const pathGuard = require('./pathGuard');
+  try {
+    pathGuard.assertSafeSnapshotId(snapshotId);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
   const db = sqliteDb || (projectEnvHandler.getDb ? projectEnvHandler.getDb() : null);
   if (db) {
     try {
@@ -1820,15 +2220,25 @@ ipcMain.handle('snapshots:restore', async (event, id) => {
         const project = getProjectById(db, snap.project_id);
         if (!project) return { success: false, error: 'Associated project not found' };
         const storageRoot = getSnapshotStorageDir();
-        const snapshotDir = path.join(storageRoot, snapshotId);
+        const snapshotDir = path.resolve(storageRoot, snapshotId);
+        pathGuard.assertInsideDirectory(snapshotDir, storageRoot);
         const files = getSnapshotFiles(db, snapshotId);
         let restored = 0;
         for (const f of files) {
+          try {
+            pathGuard.assertSafeRelativePath(f.relative_path);
+          } catch (_) {
+            continue; // Skip dangerous relative paths
+          }
           const sourcePath = f.storage_path && fs.existsSync(f.storage_path)
-            ? f.storage_path
-            : path.join(snapshotDir, f.relative_path);
+            ? path.resolve(f.storage_path)
+            : path.resolve(snapshotDir, f.relative_path);
+          pathGuard.assertInsideDirectory(sourcePath, snapshotDir);
+
           if (fs.existsSync(sourcePath)) {
-            const targetPath = path.join(project.path, f.relative_path);
+            const targetPath = path.resolve(project.path, f.relative_path);
+            pathGuard.assertInsideDirectory(targetPath, project.path);
+            pathGuard.assertSafeWritePath(targetPath);
             fs.mkdirSync(path.dirname(targetPath), { recursive: true });
             fs.copyFileSync(sourcePath, targetPath);
             restored++;
@@ -1838,6 +2248,7 @@ ipcMain.handle('snapshots:restore', async (event, id) => {
       }
     } catch (e) {
       log.error('ipc', `Failed to restore SQLite snapshot ${snapshotId}: ${e.message}`);
+      return { success: false, error: e.message };
     }
   }
 
@@ -2312,6 +2723,23 @@ ipcMain.handle('projects:scan', async (_, projectId) => {
     return result;
   } catch (e) {
     log.error('ipc', `projects:scan error: ${e.message}`);
+    throw e;
+  }
+});
+
+/**
+ * Rename a project environment globally.
+ */
+ipcMain.handle('projects:rename', async (_, { projectId, newName } = {}) => {
+  try {
+    const result = await projectEnvHandler.renameProjectEnvironment(projectId, newName);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('projects:updated', { projectId, newName, oldName: result.oldName });
+      mainWindow.webContents.send('core:data-changed', { source: 'rename', projectId, newName });
+    }
+    return result;
+  } catch (e) {
+    log.error('ipc', `projects:rename error: ${e.message}`);
     throw e;
   }
 });

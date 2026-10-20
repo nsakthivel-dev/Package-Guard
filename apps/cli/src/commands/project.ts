@@ -7,6 +7,7 @@ import {
   deleteProjectTrackingOnly
 } from "../services/project-service";
 import { setConfig, getConfig } from "@package-guard/shared/repository";
+import { validateProjectName } from "@package-guard/shared/utils";
 import { sendCliEvent } from "../pipe-client";
 import { outputSuccess, outputError } from "../output";
 
@@ -102,7 +103,40 @@ export async function executeProject(
   }
 
   if (sub === "rename") {
-    if (!subArg) {
+    let targetProject: any = null;
+    let newNameInput = "";
+
+    const allProjects = getAllProjects(db);
+
+    if (args.length >= 3) {
+      // Syntax: pg project rename <targetIdOrName> <newName>
+      const targetArg = args[1];
+      newNameInput = args[2];
+      targetProject = allProjects.find(
+        (p) => p.id.toLowerCase() === targetArg.toLowerCase() || p.name.toLowerCase() === targetArg.toLowerCase()
+      );
+      if (!targetProject) {
+        if (isJson) {
+          outputError(`Project '${targetArg}' not found. Run 'pg projects' to list available projects.`, "NOT_FOUND");
+        } else {
+          console.error(`Error: Project '${targetArg}' not found. Run 'pg projects' to list available projects.\n`);
+        }
+        return 3;
+      }
+    } else if (subArg) {
+      // Syntax: pg project rename <newName> (targeting current directory project)
+      newNameInput = subArg;
+      const { project, projectDir } = findProject(db, targetDir);
+      if (!project || !isInitialized(projectDir, project)) {
+        if (isJson) {
+          outputError("No active project in current directory to rename. Specify project: pg project rename <idOrName> <newName>", "NOT_INITIALIZED");
+        } else {
+          console.error("Error: No active project in current directory to rename. Specify project: pg project rename <idOrName> <newName>\n");
+        }
+        return 3;
+      }
+      targetProject = project;
+    } else {
       if (isJson) {
         outputError("New project name required. Example: pg project rename my-new-name", "INVALID_ARGUMENT");
       } else {
@@ -111,32 +145,49 @@ export async function executeProject(
       return 2;
     }
 
-    const { project, projectDir } = findProject(db, targetDir);
-    if (!project || !isInitialized(projectDir, project)) {
-      if (isJson) {
-        outputError("No active project in current directory to rename.", "NOT_INITIALIZED");
-      } else {
-        console.error("Error: No active project in current directory to rename.\n");
-      }
-      return 3;
-    }
+    const validation = validateProjectName(newNameInput, targetProject.name, allProjects, targetProject.id);
 
-    const oldName = project.name;
-    const success = renameCurrentProject(db, project, subArg);
-
-    if (success) {
-      await sendCliEvent("project:rename", {
-        projectId: project.id,
-        oldName,
-        newName: subArg
-      }, project.id);
-
-      if (isJson) {
-        outputSuccess({ id: project.id, oldName, newName: subArg });
+    if (!validation.valid) {
+      if (validation.isIdentical) {
+        if (isJson) {
+          outputSuccess({
+            id: targetProject.id,
+            oldName: targetProject.name,
+            newName: targetProject.name,
+            unchanged: true,
+            message: "Project name is unchanged."
+          });
+        } else {
+          console.log(`Project name is already '${targetProject.name}'. No changes made.\n`);
+        }
         return 0;
       }
 
-      console.log(`Project successfully renamed from '${oldName}' to '${subArg}'.\n`);
+      if (isJson) {
+        outputError(validation.error || "Invalid project name.", validation.isDuplicate ? "DUPLICATE_NAME" : "INVALID_ARGUMENT");
+      } else {
+        console.error(`Error: ${validation.error}\n`);
+      }
+      return 2;
+    }
+
+    const trimmedNewName = validation.name!;
+    const oldName = targetProject.name;
+    const success = renameCurrentProject(db, targetProject, trimmedNewName);
+
+    if (success) {
+      await sendCliEvent("project:rename", {
+        projectId: targetProject.id,
+        oldName,
+        newName: trimmedNewName
+      }, targetProject.id);
+
+      if (isJson) {
+        outputSuccess({ id: targetProject.id, oldName, newName: trimmedNewName });
+        return 0;
+      }
+
+      console.log(`Project successfully renamed from '${oldName}' to '${trimmedNewName}'.\n`);
       return 0;
     } else {
       if (isJson) {

@@ -51,5 +51,7 @@
   RMDir /r "$LOCALAPPDATA\Package Guard"
   RMDir /r "$LOCALAPPDATA\package-guard"
   RMDir /r "$LOCALAPPDATA\package-guard-updater"
+  RMDir /r "$LOCALAPPDATA\PackageGuard-updater"
+  RMDir /r "$LOCALAPPDATA\Package Guard-updater"
   Delete "$INSTDIR\install.ini"
 !macroend

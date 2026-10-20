@@ -191,6 +191,7 @@ export default function DetailedAnalysis() {
     if (!packages) return { total: 0, healthy: 0, patch: 0, minor: 0, major: 0, failed: 0 };
     const c: Record<string, number> = { total: 0, healthy: 0, patch: 0, minor: 0, major: 0, failed: 0 };
     packages.forEach((p: Package) => {
+      if (p.status === "ignored") return;
       c["total"]++;
       const s = p.status === "up-to-date" ? "healthy" : p.status;
       if (s in c) c[s]++;

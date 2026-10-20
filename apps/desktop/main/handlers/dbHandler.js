@@ -26,7 +26,9 @@ const store = {
     autoScanVenvsOnStartup: false,
     includeVenvsInDashboard: true,
     securityLevel: 'Standard',
-    ignoredPackages: []
+    ignoredPackages: [],
+    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || ''
   },
   history: [],
   snapshots: [],
@@ -75,7 +77,9 @@ function loadStorage() {
           theme: legacy.theme ?? 'dark',
           customScanPaths: typeof legacy.custom_scan_paths === 'string' ? JSON.parse(legacy.custom_scan_paths) : (legacy.customScanPaths ?? []),
           securityLevel: legacy.securityLevel ?? 'Standard',
-          ignoredPackages: Array.isArray(legacy.ignoredPackages) ? legacy.ignoredPackages : []
+          ignoredPackages: Array.isArray(legacy.ignoredPackages) ? legacy.ignoredPackages : [],
+          googleClientId: legacy.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
+          googleClientSecret: legacy.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET || ''
         };
         
         // Remove legacy keys and separated permission keys
@@ -412,5 +416,15 @@ module.exports = {
   getCachedPackages: (cacheDurationHours = 6) => {
     const cutoff = Date.now() - cacheDurationHours * 60 * 60 * 1000;
     return store.packages.filter((p) => p.lastChecked > cutoff);
+  },
+
+  clearAuthTokens: () => {
+    try {
+      const { openDatabase } = require('@package-guard/shared/db');
+      const db = openDatabase();
+      if (db) {
+        db.prepare('DELETE FROM auth_sessions').run();
+      }
+    } catch (_) {}
   }
 };

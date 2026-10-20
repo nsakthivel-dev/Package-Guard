@@ -21,6 +21,7 @@ export interface ElectronAPI {
   // Settings
   getSettings: () => Promise<any>;
   updateSettings: (settings: any) => Promise<void>;
+  getSystemInfo?: () => Promise<{ logicalCores: number; defaultConcurrency: number; maxConcurrency: number }>;
   
   // Snapshots
   getSnapshots: () => Promise<any[]>;
@@ -51,11 +52,58 @@ export interface ElectronAPI {
   saveScanCache: (packages: any[]) => Promise<void>;
   
   // Auto-scan trigger
-  onAutoScanTrigger: (cb: () => void) => void;
+  // Project Environments
+  getProjects: () => Promise<any[]>;
+  renameProject: (projectId: string, newName: string) => Promise<{ success: boolean; unchanged?: boolean; project?: any; oldName?: string; newName?: string; message?: string }>;
+  getProjectPackages: (projectId: string) => Promise<any[]>;
+  getProjectSnapshots: (projectId: string, limit?: number) => Promise<any[]>;
+  scanProject: (projectId: string) => Promise<any>;
+  onProjectsUpdated: (cb: (data?: any) => void) => () => void;
+  onDataChanged: (cb: (data?: any) => void) => () => void;
 
+  // Window Controls
+  minimizeWindow: () => Promise<void>;
   maximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
-  openDirectory: () => Promise<string | null>;
+  openDirectory: (defaultPath?: string) => Promise<string | null>;
+  focusWindow?: () => Promise<void>;
+
+  // Authentication & Profile
+  getAuthSession?: () => Promise<any>;
+  getAccounts?: () => Promise<any[]>;
+  switchAccount?: (userId: string) => Promise<any>;
+  loginWithGoogle?: (options: any) => Promise<any>;
+  updateProfile?: (data: any) => Promise<any>;
+  selectProfilePhoto?: () => Promise<any>;
+  saveProfilePhoto?: (userId: string, data: any) => Promise<any>;
+  removeProfilePhoto?: (userId: string) => Promise<any>;
+  logout?: () => Promise<any>;
+  signout?: () => Promise<{ success: boolean }>;
+  clearAllSessionData?: () => Promise<{ success: boolean }>;
+  deleteAccount?: (userId: string, confirmation: boolean) => Promise<any>;
+  getAuthConfig?: () => Promise<any>;
+  saveAuthConfig?: (config: any) => Promise<any>;
+
+  // Profile Storage Location
+  getProfileStoragePath?: () => Promise<any>;
+  selectProfileStorageDir?: () => Promise<any>;
+  setProfileStoragePath?: (dirPath: string) => Promise<any>;
+
+  // OS / CLI / App helpers
+  cliInstall?: () => Promise<any>;
+  cliUninstall?: () => Promise<any>;
+  cliStatus?: () => Promise<any>;
+  openInFolder?: (target: string) => Promise<any>;
+  getAppVersion?: () => Promise<string>;
+  getDataRoot?: () => Promise<any>;
+  uninstallApp?: (mode: string) => Promise<any>;
+
+  // Event Listeners
+  onAutoScanTrigger?: (cb: () => void) => () => void;
+  onSnapshotCreated?: (cb: (data?: any) => void) => () => void;
+  onOpenProject?: (cb: (data?: any) => void) => void;
+  onOpenCheckout?: (cb: (data?: any) => void) => void;
+  onProjectScanUpdate?: (cb: (data?: any) => void) => () => void;
 }
 
 declare global {

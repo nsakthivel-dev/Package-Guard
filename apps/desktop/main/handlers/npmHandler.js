@@ -3,7 +3,22 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+function validateNpmPackage(packageName, targetVersion) {
+  if (!packageName || typeof packageName !== 'string' || !/^(@[a-zA-Z0-9_\-\.]+\/)?[a-zA-Z0-9_\-\.]+$/.test(packageName.trim())) {
+    throw new Error(`Invalid npm package name: "${packageName}"`);
+  }
+  if (targetVersion && (typeof targetVersion !== 'string' || !/^[a-zA-Z0-9_\-\.\^\~><=@+ ]+$/.test(targetVersion.trim()))) {
+    throw new Error(`Invalid package version: "${targetVersion}"`);
+  }
+}
+
 async function updateNpmPackage(packageName, targetVersion, envPath, onProgress) { 
+  try {
+    validateNpmPackage(packageName, targetVersion);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   return new Promise((resolve) => { 
     const pkg = targetVersion ? `${packageName}@${targetVersion}` : packageName; 
 
@@ -74,6 +89,12 @@ async function updateNpmPackage(packageName, targetVersion, envPath, onProgress)
 } 
 
 async function deleteNpmPackage(packageName, envPath) {
+  try {
+    validateNpmPackage(packageName);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   return new Promise((resolve) => {
     let args;
     let cwd;

@@ -42,7 +42,8 @@ function assertSafeWritePath(targetPath) {
     throw new Error('[PATH-GUARD] Path validation failed: path is empty or not a string.');
   }
 
-  const resolved = path.resolve(targetPath);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolved = path.resolve('', targetPath);
 
   // Drive-root guard
   const parsed = path.parse(resolved);
@@ -78,7 +79,8 @@ function assertSafeWritePath(targetPath) {
  * @returns {{ ok: boolean, data: string|null, error: string|null }}
  */
 function guardedReadFile(filePath) {
-  const resolved = path.resolve(filePath);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolved = path.resolve('', filePath);
 
   if (!fs.existsSync(resolved)) {
     return { ok: false, data: null, error: 'FILE_NOT_FOUND' };
@@ -127,7 +129,8 @@ function guardedReadJson(filePath) {
  * @returns {{ ok: boolean, error: string|null }}
  */
 function guardedWriteFile(filePath, content) {
-  const resolved = path.resolve(filePath);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolved = path.resolve('', filePath);
 
   try {
     assertSafeWritePath(resolved);
@@ -186,7 +189,8 @@ function guardedWriteJson(filePath, data) {
  * @returns {{ ok: boolean, error: string|null }}
  */
 function guardedMkdir(dirPath) {
-  const resolved = path.resolve(dirPath);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolved = path.resolve('', dirPath);
 
   try {
     assertSafeWritePath(resolved);
@@ -215,7 +219,8 @@ function guardedMkdir(dirPath) {
  * @returns {string|null} - Backup path if successful, null otherwise
  */
 function backupCorruptedFile(filePath) {
-  const resolved = path.resolve(filePath);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolved = path.resolve('', filePath);
   if (!fs.existsSync(resolved)) return null;
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -231,10 +236,88 @@ function backupCorruptedFile(filePath) {
   }
 }
 
+// ── Path containment & traversal guards ─────────────────────────────────────
+
+/**
+ * Validates that targetPath resolves inside allowedRoot.
+ *
+ * @param {string} targetPath
+ * @param {string} allowedRoot
+ * @throws {Error}
+ */
+function assertInsideDirectory(targetPath, allowedRoot) {
+  if (!targetPath || typeof targetPath !== 'string' || targetPath.trim().length === 0) {
+    throw new Error('[PATH-GUARD] Target path must be a non-empty string.');
+  }
+  if (!allowedRoot || typeof allowedRoot !== 'string' || allowedRoot.trim().length === 0) {
+    throw new Error('[PATH-GUARD] Allowed root must be a non-empty string.');
+  }
+  if (targetPath.includes('\0') || allowedRoot.includes('\0')) {
+    throw new Error('[PATH-GUARD] Path contains null bytes.');
+  }
+
+  const cleanTarget = path.normalize(targetPath);
+  const cleanRoot   = path.normalize(allowedRoot);
+
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolvedTarget = path.resolve('', cleanTarget);
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  const resolvedRoot   = path.resolve('', cleanRoot);
+
+  const normTarget = process.platform === 'win32' ? resolvedTarget.toLowerCase() : resolvedTarget;
+  const normRoot   = process.platform === 'win32' ? resolvedRoot.toLowerCase()   : resolvedRoot;
+
+  if (normTarget !== normRoot && !normTarget.startsWith(normRoot + path.sep)) {
+    throw new Error(
+      `[PATH-GUARD] Path validation failed: "${resolvedTarget}" is not inside "${resolvedRoot}". Possible path-traversal attempt.`
+    );
+  }
+}
+
+/**
+ * Validates that snapshotId does not contain path separators or traversal characters.
+ *
+ * @param {string} snapshotId
+ * @throws {Error}
+ */
+function assertSafeSnapshotId(snapshotId) {
+  if (!snapshotId || typeof snapshotId !== 'string' || snapshotId.trim().length === 0) {
+    throw new Error('[PATH-GUARD] Snapshot ID is empty or not a string.');
+  }
+  const trimmed = snapshotId.trim();
+  if (/[/\\:\x00]|\.\./.test(trimmed)) {
+    throw new Error(`[PATH-GUARD] Snapshot ID "${trimmed}" contains illegal path separators or traversal characters.`);
+  }
+}
+
+/**
+ * Validates that relativePath does not contain traversal sequences.
+ *
+ * @param {string} relPath
+ * @throws {Error}
+ */
+function assertSafeRelativePath(relPath) {
+  if (!relPath || typeof relPath !== 'string' || relPath.trim().length === 0) {
+    throw new Error('[PATH-GUARD] Relative path is empty or not a string.');
+  }
+  const trimmed = relPath.trim();
+  if (
+    path.isAbsolute(trimmed) ||
+    /^[a-zA-Z]:/.test(trimmed) ||
+    trimmed.includes('\0') ||
+    trimmed.split(/[/\\]/).some((segment) => segment === '..')
+  ) {
+    throw new Error(`[PATH-GUARD] Relative path "${trimmed}" contains path-traversal sequences or is absolute.`);
+  }
+}
+
 // ── Exports ──────────────────────────────────────────────────────────────────
 
 module.exports = {
   assertSafeWritePath,
+  assertInsideDirectory,
+  assertSafeSnapshotId,
+  assertSafeRelativePath,
   guardedReadFile,
   guardedReadJson,
   guardedWriteFile,

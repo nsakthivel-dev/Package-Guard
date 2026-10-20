@@ -10,6 +10,12 @@ import { verifyProject } from "./verify-service";
 import { sendCliEvent } from "../pipe-client";
 import { getOutdatedPackages, classifyUpdate, getPackageDetails } from "./package-service";
 import { detectPackageManager } from "./project-service";
+import {
+  assertSafePackageManager,
+  assertSafePackageName,
+  assertSafePackageVersion,
+  assertNoShellMetachars,
+} from "@package-guard/shared/utils";
 
 export interface UpdateOptions {
   safe?: boolean;
@@ -38,6 +44,11 @@ export async function runPackageManagerCommand(
   args: string[],
   cwd: string
 ): Promise<{ success: boolean; stdout: string; stderr: string; code: number }> {
+  assertSafePackageManager(pm);
+  for (const arg of args) {
+    assertNoShellMetachars(arg, "package manager argument");
+  }
+
   return new Promise((resolve) => {
     const isWin = process.platform === "win32";
     let cmd = pm;
@@ -78,6 +89,20 @@ export async function updateSinglePackage(
   packageName: string,
   options: UpdateOptions = {}
 ): Promise<UpdateResult> {
+  const ecosystem = project.packageManager === "pip" ? "pip" : "npm";
+  try {
+    assertSafePackageName(packageName, ecosystem);
+    if (options.version) {
+      assertSafePackageVersion(options.version);
+    }
+  } catch (validationErr) {
+    return {
+      success: false,
+      package: packageName,
+      error: `Package validation failed: ${validationErr instanceof Error ? validationErr.message : String(validationErr)}`,
+    };
+  }
+
   // Step 1: Create Safety Snapshot
   const safetySnapName = `Safety Snapshot - Before updating ${packageName}`;
   let safetySnapshot: Snapshot;

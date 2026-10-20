@@ -56,7 +56,8 @@ function runAuditCommand(pm: string, cwd: string): Promise<{ stdout: string; std
 
 export async function runSecurityAudit(
   db: BetterSqlite3.Database,
-  project: Project
+  project: Project,
+  options?: { securityLevel?: "Relaxed" | "Standard" | "Strict"; ignoredPackages?: string[] }
 ): Promise<SecurityReport> {
   const pm = project.packageManager || detectPackageManager(project.path);
   const pkgJson = path.join(project.path, "package.json");
@@ -70,6 +71,45 @@ export async function runSecurityAudit(
     };
   }
 
+  let securityLevel = options?.securityLevel;
+  let ignoredPackages = options?.ignoredPackages;
+
+  if (!securityLevel || !ignoredPackages) {
+    try {
+      const cfgRow = db.prepare("SELECT value FROM config WHERE key = 'settings'").get() as any;
+      if (cfgRow?.value) {
+        const parsed = JSON.parse(cfgRow.value);
+        if (!securityLevel) securityLevel = parsed.securityLevel;
+        if (!ignoredPackages) ignoredPackages = parsed.ignoredPackages;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!securityLevel || !ignoredPackages) {
+    try {
+      const settingsPath = path.join(
+        process.env.APPDATA || (process.platform === "darwin" ? (process.env.HOME ? path.join(process.env.HOME, "Library", "Application Support") : "") : "/var/local"),
+        "PackageGuard",
+        "config",
+        "settings.json"
+      );
+      if (fs.existsSync(settingsPath)) {
+        const fileData = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+        const s = fileData.settings || fileData;
+        if (!securityLevel) securityLevel = s.securityLevel;
+        if (!ignoredPackages) ignoredPackages = s.ignoredPackages;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const level = securityLevel || "Standard";
+  const ignoredList = Array.isArray(ignoredPackages) ? ignoredPackages : [];
+  const ignoredSet = new Set(ignoredList.map(p => typeof p === "string" ? p.trim().toLowerCase() : "").filter(Boolean));
+
   const result = await runAuditCommand(pm, project.path);
   const vulnerabilities: VulnerabilityItem[] = [];
 
@@ -79,9 +119,25 @@ export async function runSecurityAudit(
       // npm audit v7+ format
       if (data.vulnerabilities && typeof data.vulnerabilities === "object") {
         for (const [pkgName, val] of Object.entries<any>(data.vulnerabilities)) {
+          const normName = pkgName.trim().toLowerCase();
+          if (ignoredSet.has(normName) || ignoredSet.has(normName.replace(/[._]/g, "-"))) {
+            continue;
+          }
+
           const sevRaw = String(val.severity || "LOW").toUpperCase();
           const sev: VulnerabilityItem["severity"] =
             sevRaw === "CRITICAL" ? "CRITICAL" : sevRaw === "HIGH" ? "HIGH" : sevRaw === "MODERATE" || sevRaw === "MEDIUM" ? "MEDIUM" : "LOW";
+
+          // Strictness threshold filtering:
+          // Relaxed: Only flag CRITICAL and HIGH (CVSS >= 7.0)
+          if (level === "Relaxed" && (sev === "MEDIUM" || sev === "LOW")) {
+            continue;
+          }
+          // Standard: Flag CRITICAL, HIGH, and MODERATE/MEDIUM (CVSS >= 4.0)
+          if (level === "Standard" && sev === "LOW") {
+            continue;
+          }
+          // Strict: Flag all levels including LOW (CVSS > 0.0)
 
           const fixInfo = typeof val.fixAvailable === "object" ? val.fixAvailable.version : undefined;
 
@@ -118,10 +174,23 @@ export async function runSecurityAudit(
     const cached = listSecurityAdvisories(db);
     if (cached.length > 0) {
       for (const c of cached) {
+        const normName = c.package_name.trim().toLowerCase();
+        if (ignoredSet.has(normName) || ignoredSet.has(normName.replace(/[._]/g, "-"))) {
+          continue;
+        }
+
+        const sev = (c.severity as any) || "LOW";
+        if (level === "Relaxed" && (sev === "MEDIUM" || sev === "LOW")) {
+          continue;
+        }
+        if (level === "Standard" && sev === "LOW") {
+          continue;
+        }
+
         vulnerabilities.push({
           id: c.id,
           name: c.package_name,
-          severity: c.severity as any,
+          severity: sev,
           title: c.title || "Cached Advisory",
           vulnerableVersions: c.vulnerable_versions || "*",
           fixedIn: c.fixed_in || undefined,

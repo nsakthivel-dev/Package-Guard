@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { ShieldCheck, Bell, Clock } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { runAutoScan, loadBootstrapData } from "@/lib/autoScan";
 import { usePackageStore } from "@/store/usePackageStore";
 
-// Palette token pulled from the Dashboard palette
-const INDIGO = "#6366F1";
-const TEAL   = "#5EEAD4";
-
 export function PermissionDialog() {
-  const [show,    setShow]    = useState(false);
+  const [show, setShow] = useState(false);
   const [dontAsk, setDontAsk] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -16,9 +13,9 @@ export function PermissionDialog() {
     let isMounted = true;
     const checkPermission = async () => {
       const api = (window as any).electronAPI;
-      if (!api) { 
-        if (isMounted) setLoading(false); 
-        return; 
+      if (!api) {
+        if (isMounted) setLoading(false);
+        return;
       }
       try {
         const prefs = await api.getSettings();
@@ -35,15 +32,17 @@ export function PermissionDialog() {
       }
     };
     checkPermission();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleResponse = async (allowed: boolean) => {
     const api = (window as any).electronAPI;
     if (api) {
-      await api.updateSettings({ 
-        backgroundPermission: allowed, 
-        dontAskAgain: Boolean(dontAsk || allowed) 
+      await api.updateSettings({
+        backgroundPermission: allowed,
+        dontAskAgain: Boolean(dontAsk || allowed),
       });
     }
     setShow(false);
@@ -69,218 +68,87 @@ export function PermissionDialog() {
 
   return (
     <Dialog open={show} onOpenChange={(open) => { if (!open) handleDismiss(); }}>
-      <DialogContent className="max-w-md p-0 border-none bg-transparent shadow-none focus:outline-none overflow-visible">
-        {/*
-          Modal card — matches Dashboard card system:
-          bg-surface-container-lowest, border-card-border, rounded-2xl (16px),
-          shadow-premium pattern
-        */}
-        <div
-          className="w-full rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300"
-          style={{
-            background: "hsl(var(--surface-container-lowest))",
-            border: "1px solid hsl(var(--card-border))",
-            boxShadow: "0 20px 48px -8px rgba(0,0,0,0.12), 0 4px 12px -2px rgba(0,0,0,0.06)",
-          }}
-        >
-          <div className="p-7">
-            {/* ── Icon tile ──────────────────────────────────────────────── */}
-            <div className="flex flex-col items-center text-center">
-              <div className="relative mb-5">
-                {/* Soft glow halo */}
-                <div
-                  className="absolute -inset-3 rounded-2xl blur-xl opacity-25"
-                  style={{ background: INDIGO }}
-                />
-                {/* Icon tile — same tinted-bg pattern as Dashboard stat cards */}
-                <div
-                  className="relative w-16 h-16 rounded-2xl flex items-center justify-center"
-                  style={{ background: `${INDIGO}1a` }}
-                >
-                  <span
-                    className="material-symbols-outlined text-[36px]"
-                    style={{
-                      color: INDIGO,
-                      fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 48",
-                    }}
-                  >
-                    shield_with_heart
-                  </span>
-                </div>
-                {/* Lightning badge — solid indigo circle, reads clearly on the tile */}
-                <div
-                  className="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full flex items-center justify-center shadow-md"
-                  style={{ background: INDIGO, border: "2px solid hsl(var(--surface-container-lowest))" }}
-                >
-                  <span
-                    className="material-symbols-outlined text-white text-[13px]"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    bolt
-                  </span>
-                </div>
-              </div>
+      <DialogContent
+        overlayClassName="backdrop-blur-sm bg-black/40"
+        className="max-w-md p-0 border-none bg-transparent shadow-none focus:outline-none overflow-visible"
+      >
+        <div className="w-full rounded-2xl overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-7 flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+          {/* ── Modern crisp icon badge (no blurred halo) ──────────────── */}
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-b from-indigo-50 to-indigo-100/60 dark:from-indigo-950/50 dark:to-indigo-900/30 border border-indigo-200/80 dark:border-indigo-800/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-sm mb-4">
+            <ShieldCheck className="w-7 h-7" strokeWidth={2.2} />
+          </div>
 
-              {/* ── Typography ─────────────────────────────────────────────── */}
-              {/* Title — matches Dashboard card title weight */}
-              <h2
-                className="text-[18px] font-bold leading-tight mb-1.5"
-                style={{ color: "hsl(var(--on-surface))" }}
-              >
-                Background Scanning
-              </h2>
-              {/* Subtitle — matches Dashboard muted section subtitle */}
-              <p
-                className="text-[13px] leading-relaxed max-w-[300px] mb-6"
-                style={{ color: "hsl(var(--muted-foreground))" }}
-              >
-                Allow PackageGuard to stay active in the system tray and scan
-                your environments even when this window is closed.
+          {/* ── Typography ─────────────────────────────────────────────── */}
+          <h2 className="text-[18px] font-bold tracking-tight text-slate-800 dark:text-slate-100 mb-1.5 leading-tight">
+            Background Scanning
+          </h2>
+          <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400 max-w-[320px] mb-6">
+            Allow PackageGuard to stay active in the system tray and scan your environments even when this window is closed.
+          </p>
+
+          {/* ── Feature highlights ─────────────────────────────────────── */}
+          <div className="grid grid-cols-2 gap-3 w-full mb-6">
+            {/* Notifications */}
+            <div className="flex flex-col items-start p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/60 text-left">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-800/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2.5">
+                <Bell className="w-4 h-4" strokeWidth={2} />
+              </div>
+              <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-200 mb-1 leading-none">
+                Notifications
               </p>
-
-              {/* ── Feature blocks ─────────────────────────────────────────── */}
-              {/*
-                Matches Dashboard's stat card icon-tile language:
-                small tinted rounded-square icon + bold label + muted description.
-                Separated from the rest of the modal with a light border card.
-              */}
-              <div
-                className="w-full rounded-xl p-4 mb-5 grid grid-cols-2 gap-4"
-                style={{
-                  background: "hsl(var(--surface-container))",
-                  border: "1px solid hsl(var(--card-border))",
-                }}
-              >
-                {/* Notifications */}
-                <div className="flex flex-col items-start gap-2">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: `${INDIGO}1a`, color: INDIGO }}
-                  >
-                    <span
-                      className="material-symbols-outlined text-[17px]"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      notifications_active
-                    </span>
-                  </div>
-                  <div>
-                    <p
-                      className="text-[12px] font-semibold leading-none mb-1"
-                      style={{ color: "hsl(var(--on-surface))" }}
-                    >
-                      Notifications
-                    </p>
-                    <p
-                      className="text-[11px] leading-snug"
-                      style={{ color: "hsl(var(--muted-foreground))" }}
-                    >
-                      Real-time alerts for newly discovered vulnerabilities.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Scheduled Audits */}
-                <div className="flex flex-col items-start gap-2">
-                  <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: `${TEAL}20`, color: "#0f766e" }}
-                  >
-                    <span
-                      className="material-symbols-outlined text-[17px]"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      update
-                    </span>
-                  </div>
-                  <div>
-                    <p
-                      className="text-[12px] font-semibold leading-none mb-1"
-                      style={{ color: "hsl(var(--on-surface))" }}
-                    >
-                      Scheduled Audits
-                    </p>
-                    <p
-                      className="text-[11px] leading-snug"
-                      style={{ color: "hsl(var(--muted-foreground))" }}
-                    >
-                      Automated analysis tailored to your security rules.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Checkbox ───────────────────────────────────────────────── */}
-              {/*
-                BUG FIX 2: accent-primary sets the checked color to --primary (indigo).
-                The default unchecked border is neutral gray via border-[hsl(var(--border))].
-                No orange/yellow color remains.
-              */}
-              <div
-                className="flex items-center gap-2.5 mb-6 cursor-pointer select-none"
-                onClick={() => setDontAsk(!dontAsk)}
-              >
-                <input
-                  id="dont-ask"
-                  type="checkbox"
-                  checked={dontAsk}
-                  onChange={() => setDontAsk(!dontAsk)}
-                  className="w-4 h-4 rounded cursor-pointer accent-primary"
-                  style={{
-                    // Neutral gray border in default state; browser replaces with accent on check
-                    outline: "none",
-                    accentColor: INDIGO,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <label
-                  htmlFor="dont-ask"
-                  className="text-[13px] font-medium cursor-pointer"
-                  style={{ color: "hsl(var(--muted-foreground))" }}
-                >
-                  Don't ask me again
-                </label>
-              </div>
-
-              {/* ── Buttons ────────────────────────────────────────────────── */}
-              <div className="flex items-center justify-center w-full gap-3">
-                {/*
-                  "No, thanks" — ghost/outlined: transparent bg, gray border,
-                  same height as Allow & Start.
-                */}
-                <button
-                  onClick={() => handleResponse(false)}
-                  className="flex-1 h-10 px-5 rounded-lg text-[13px] font-semibold transition-all hover:bg-surface-container active:scale-95"
-                  style={{
-                    color: "hsl(var(--on-surface))",
-                    border: "1px solid hsl(var(--card-border))",
-                    background: "transparent",
-                  }}
-                >
-                  No, thanks
-                </button>
-
-                {/*
-                  BUG FIX 1: "Allow & Start" — solid indigo, white bold text.
-                  Uses the same inline style pattern as Dashboard's Create Snapshot
-                  and Scan Now buttons (primary-btn-solid equivalent).
-                  Previously rendered as invisible due to missing/undefined
-                  `primary-btn-gradient` class.
-                */}
-                <button
-                  onClick={() => handleResponse(true)}
-                  className="flex-1 h-10 px-5 rounded-lg text-[13px] font-bold text-white transition-all active:scale-95"
-                  style={{
-                    background: INDIGO,
-                    boxShadow: `0 1px 2px ${INDIGO}40, 0 0 0 1px ${INDIGO}20`,
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.filter = "brightness(1.08)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.filter = "")}
-                >
-                  Allow &amp; Start
-                </button>
-              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                Real-time alerts for newly discovered vulnerabilities.
+              </p>
             </div>
+
+            {/* Scheduled Audits */}
+            <div className="flex flex-col items-start p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/60 text-left">
+              <div className="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-950/60 border border-teal-100 dark:border-teal-800/60 flex items-center justify-center text-teal-600 dark:text-teal-400 mb-2.5">
+                <Clock className="w-4 h-4" strokeWidth={2} />
+              </div>
+              <p className="text-[13px] font-semibold text-slate-800 dark:text-slate-200 mb-1 leading-none">
+                Scheduled Audits
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                Automated analysis tailored to your security rules.
+              </p>
+            </div>
+          </div>
+
+          {/* ── Checkbox ───────────────────────────────────────────────── */}
+          <div
+            className="flex items-center gap-2 mb-6 cursor-pointer select-none text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+            onClick={() => setDontAsk(!dontAsk)}
+          >
+            <input
+              id="dont-ask"
+              type="checkbox"
+              checked={dontAsk}
+              onChange={(e) => setDontAsk(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer accent-indigo-600"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <label htmlFor="dont-ask" className="cursor-pointer">
+              Don't ask me again
+            </label>
+          </div>
+
+          {/* ── Button actions ─────────────────────────────────────────── */}
+          <div className="flex items-center justify-center w-full gap-3">
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="flex-1 h-10 px-4 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 transition-all active:scale-[0.98] cursor-pointer"
+            >
+              Maybe Later
+            </button>
+            <button
+              type="button"
+              onClick={() => handleResponse(true)}
+              className="flex-1 h-10 px-4 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm hover:shadow-md hover:shadow-indigo-500/20 active:scale-[0.98] transition-all cursor-pointer"
+            >
+              Allow &amp; Start
+            </button>
           </div>
         </div>
       </DialogContent>

@@ -772,6 +772,114 @@ async function enrichGlobalSystems(rawEnvs) {
   return enriched;
 }
 
+/**
+ * Rename a project environment.
+ * Validates the new name, updates the authoritative project record in SQLite,
+ * updates the .packageguard/config.json file if present, records a history entry,
+ * and updates any matching entries in dbHandler.
+ *
+ * @param {string} projectId  e.g. "proj-123" or "proj-env-proj-123"
+ * @param {string} newName    New display name
+ * @returns {Promise<{ success: boolean; unchanged?: boolean; project: object; oldName: string; newName: string; message?: string }>}
+ */
+async function renameProjectEnvironment(projectId, newName) {
+  const rawId = String(projectId).replace(/^proj-env-/, '');
+  const db = getDb();
+  if (!db) {
+    throw new Error('Database is unavailable');
+  }
+
+  const {
+    getProjectById,
+    listProjects,
+    renameProject,
+    insertHistory,
+  } = require('@package-guard/shared/repository');
+  const { validateProjectName } = require('@package-guard/shared/utils');
+
+  const project = getProjectById(db, rawId);
+  if (!project) {
+    throw new Error(`Project with ID "${rawId}" not found`);
+  }
+
+  const allProjects = listProjects(db);
+  const validation = validateProjectName(newName, project.name, allProjects, rawId);
+
+  if (!validation.valid) {
+    if (validation.isIdentical) {
+      const { packageCount } = resolveProjectScanState(db, project);
+      return {
+        success: true,
+        unchanged: true,
+        project: classifyProject(project, packageCount),
+        oldName: project.name,
+        newName: project.name,
+        message: 'Project name is unchanged.',
+      };
+    }
+    throw new Error(validation.error || 'Invalid project name.');
+  }
+
+  const trimmedNewName = validation.name;
+  const oldName = project.name;
+
+  // 1. Update SQLite projects table
+  const renamed = renameProject(db, rawId, trimmedNewName);
+  if (!renamed) {
+    throw new Error(`Failed to update project name in database.`);
+  }
+
+  // 2. Update .packageguard/config.json in project path if it exists
+  try {
+    const configPath = path.join(project.path, '.packageguard', 'config.json');
+    if (fs.existsSync(configPath)) {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      cfg.name = trimmedNewName;
+      fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf8');
+    }
+  } catch (err) {
+    console.warn('[ProjectEnvHandler] Could not update .packageguard/config.json:', err.message);
+  }
+
+  // 3. Record history entry
+  try {
+    insertHistory(db, {
+      projectId: rawId,
+      eventType: 'UPDATE',
+      description: `Project renamed from "${oldName}" to "${trimmedNewName}"`,
+      detailsJson: JSON.stringify({ oldName, newName: trimmedNewName, action: 'rename' }),
+    });
+  } catch (err) {
+    console.warn('[ProjectEnvHandler] Could not record history entry:', err.message);
+  }
+
+  // 4. Update in dbHandler if present
+  try {
+    const dbHandler = require('./dbHandler');
+    if (dbHandler && typeof dbHandler.getEnvironments === 'function') {
+      const envs = dbHandler.getEnvironments();
+      const match = envs.find(e => e.id === rawId || e.id === projectId || e.name === oldName);
+      if (match) {
+        match.name = trimmedNewName;
+        if (typeof dbHandler.saveStorage === 'function') dbHandler.saveStorage();
+      }
+    }
+  } catch {}
+
+  const updatedProject = getProjectById(db, rawId);
+  const targetProj = updatedProject || { ...project, name: trimmedNewName };
+  const { packageCount } = resolveProjectScanState(db, targetProj);
+  const env = classifyProject(targetProj, packageCount);
+
+  return {
+    success: true,
+    unchanged: false,
+    project: env,
+    oldName,
+    newName: trimmedNewName,
+  };
+}
+
 module.exports = {
   setDb,
   getDb,
@@ -781,6 +889,7 @@ module.exports = {
   getProjectPackages,
   getProjectSnapshots,
   scanProjectEnvironment,
+  renameProjectEnvironment,
   enrichGlobalSystems,
   classifyProject,
   detectVenvDir,

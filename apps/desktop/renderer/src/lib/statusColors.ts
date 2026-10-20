@@ -1,4 +1,4 @@
-export type PackageStatus = "up-to-date" | "patch" | "minor" | "major" | "failed" | "unknown";
+export type PackageStatus = "up-to-date" | "patch" | "minor" | "major" | "failed" | "unknown" | "ignored";
 
 export const statusConfig: Record<PackageStatus, { label: string; badgeClass: string; dotClass: string }> = {
   "up-to-date": {
@@ -30,6 +30,11 @@ export const statusConfig: Record<PackageStatus, { label: string; badgeClass: st
     label: "Unknown",
     badgeClass: "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0] rounded-[20px] font-semibold",
     dotClass: "bg-[#CBD5E1]",
+  },
+  ignored: {
+    label: "Ignored",
+    badgeClass: "bg-gray-50 text-gray-500 border-gray-200 rounded-[20px] font-semibold",
+    dotClass: "bg-gray-400",
   },
 };
 

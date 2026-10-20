@@ -8,6 +8,7 @@ import {
   getSnapshotById as repoGetSnapshotById,
   insertSnapshot as repoInsertSnapshot,
   deleteSnapshotById as repoDeleteSnapshotById,
+  renameProject as repoRenameProject,
 } from '@packageguard/shared/repository';
 import type { Project, Snapshot, DatabaseShape } from '@packageguard/shared/types';
 
@@ -81,6 +82,15 @@ export function deleteProject(id: string): boolean {
     const stmt = db.prepare('DELETE FROM projects WHERE id = ?');
     const res = stmt.run(id);
     return res.changes > 0;
+  } finally {
+    db.close();
+  }
+}
+
+export function renameProject(id: string, newName: string): boolean {
+  const db = getDb();
+  try {
+    return repoRenameProject(db, id, newName);
   } finally {
     db.close();
   }

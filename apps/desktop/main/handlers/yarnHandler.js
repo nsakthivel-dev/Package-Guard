@@ -199,9 +199,22 @@ async function listPackages(envPath) {
   return packages;
 }
 
-// ─── Add / install a package ──────────────────────────────────────────────────
+function validatePackage(packageName, targetVersion) {
+  if (!packageName || typeof packageName !== 'string' || !/^(@[a-zA-Z0-9_\-\.]+\/)?[a-zA-Z0-9_\-\.]+$/.test(packageName.trim())) {
+    throw new Error(`Invalid package name: "${packageName}"`);
+  }
+  if (targetVersion && (typeof targetVersion !== 'string' || !/^[a-zA-Z0-9_\-\.\^\~><=@+ ]+$/.test(targetVersion.trim()))) {
+    throw new Error(`Invalid package version: "${targetVersion}"`);
+  }
+}
 
 async function updateYarnPackage(packageName, targetVersion, envPath, onProgress) {
+  try {
+    validatePackage(packageName, targetVersion);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   const exe = await resolveYarnExecutable();
   if (!exe) {
     return { success: false, package: packageName, error: 'yarn executable not found' };
@@ -270,6 +283,12 @@ async function updateYarnPackage(packageName, targetVersion, envPath, onProgress
 // ─── Remove / uninstall a package ─────────────────────────────────────────────
 
 async function deleteYarnPackage(packageName, envPath) {
+  try {
+    validatePackage(packageName);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   const exe = await resolveYarnExecutable();
   if (!exe) {
     return { success: false, package: packageName, error: 'yarn executable not found' };

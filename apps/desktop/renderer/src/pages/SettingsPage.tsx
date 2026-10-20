@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Shield, 
   Clock,
@@ -17,12 +17,41 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useGetSettings, useUpdateSettings, getGetSettingsQueryKey } from "@packageguard/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function SettingsPage() {
   const qc = useQueryClient();
   const { data: settings } = useGetSettings();
   const updateSettings = useUpdateSettings();
   const [newIgnore, setNewIgnore] = useState("");
+  const [systemInfo, setSystemInfo] = useState<{
+    logicalCores: number;
+    defaultConcurrency: number;
+    maxConcurrency: number;
+  }>({
+    logicalCores: 4,
+    defaultConcurrency: 4,
+    maxConcurrency: 10,
+  });
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (api?.getSystemInfo) {
+      api.getSystemInfo().then((info: any) => {
+        if (info && typeof info.logicalCores === "number") {
+          setSystemInfo(info);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  const currentConcurrency = Number((settings as any)?.concurrencyLimit) || systemInfo.defaultConcurrency || 4;
+  const maxConcurrency = systemInfo.maxConcurrency || 10;
 
   const handleUpdate = (key: string, value: any) => {
     if (!settings) return;
@@ -150,15 +179,34 @@ export default function SettingsPage() {
           </div>
 
           <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl divide-y divide-outline-variant shadow-sm overflow-hidden">
-            <div className="p-6 flex items-center justify-between gap-4 hover:bg-surface-container-low/30 transition-colors">
+            <div className="p-6 flex items-center justify-between gap-4 bg-surface-container-low/20">
               <div className="space-y-1">
-                <p className="text-[15px] font-bold text-on-surface">Deep Dependency Analysis</p>
-                <p className="text-[13px] text-on-surface-variant max-w-[540px]">Analyze nested dependencies for security vulnerabilities (Higher resource usage).</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-[15px] font-bold text-on-surface">Deep Dependency Analysis</p>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                    Coming Soon
+                  </span>
+                </div>
+                <p className="text-[13px] text-on-surface-variant max-w-[540px]">
+                  Analyze nested dependencies for security vulnerabilities (Higher resource usage). Transitive lockfile resolution will arrive in a future update.
+                </p>
               </div>
-              <Switch 
-                checked={Boolean(settings.safeMode)} 
-                onCheckedChange={(val) => handleUpdate('safeMode', val)} 
-              />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="inline-block cursor-not-allowed">
+                      <Switch 
+                        checked={false} 
+                        disabled={true}
+                        aria-label="Deep Dependency Analysis (Coming Soon)"
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-[260px] text-center">
+                    Transitive lockfile dependency scanning is planned for an upcoming release and currently disabled.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             
             <div className="p-6 flex items-center justify-between gap-4 hover:bg-surface-container-low/30 transition-colors">
@@ -221,7 +269,7 @@ export default function SettingsPage() {
                 type="button"
                 onClick={addIgnore} 
                 disabled={!newIgnore.trim()}
-                className="rounded-xl bg-primary text-on-primary font-bold px-5 hover:bg-primary/90 transition-colors"
+                className="rounded-xl bg-primary text-on-primary font-bold px-5 hover:bg-[#4338CA] transition-colors"
               >
                 <Plus className="w-4 h-4 mr-1.5" /> Add
               </Button>
@@ -258,24 +306,46 @@ export default function SettingsPage() {
           </div>
 
           <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1">
-                <p className="text-[15px] font-bold text-on-surface">Parallel Analysis Threads</p>
-                <p className="text-[13px] text-on-surface-variant max-w-[540px]">Optimize scanning speed and concurrent requests based on your CPU cores.</p>
+                <p className="text-[15px] font-bold text-on-surface">Concurrent Network Requests</p>
+                <p className="text-[13px] text-on-surface-variant max-w-[540px]">
+                  Controls how many package manifests are fetched simultaneously from npm and PyPI registries. Higher values speed up audits on high-speed connections, while lower values conserve memory and avoid registry rate limits.
+                </p>
               </div>
               <div className="flex items-center gap-4 shrink-0">
-                <span className="text-[14px] font-mono font-bold text-primary min-w-[70px] text-right">
-                  {Number((settings as any).concurrencyLimit) || 5} Threads
+                <span className="text-[14px] font-mono font-bold text-primary min-w-[90px] text-right">
+                  {currentConcurrency} {currentConcurrency === 1 ? "Request" : "Requests"}
                 </span>
                 <input 
                   type="range" 
                   min="1" 
-                  max="10" 
-                  value={Number((settings as any).concurrencyLimit) || 5}
+                  max={maxConcurrency} 
+                  value={currentConcurrency}
                   onChange={(e) => handleUpdate('concurrencyLimit', parseInt(e.target.value, 10))}
                   className="w-32 accent-primary cursor-pointer"
                 />
               </div>
+            </div>
+
+            {/* Real-time Recommendation and Warning Badges */}
+            <div className="mt-4 pt-3.5 border-t border-outline-variant/40 flex items-center gap-2">
+              {currentConcurrency <= 2 ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                  <span className="material-symbols-outlined text-[14px]">eco</span>
+                  <span>Gentle Mode: Best for battery saving or low-bandwidth networks.</span>
+                </div>
+              ) : currentConcurrency >= 7 ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  <span className="material-symbols-outlined text-[14px]">warning</span>
+                  <span>⚠ High: May trigger registry rate-limits (HTTP 429) or timeouts on slower connections.</span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <span className="material-symbols-outlined text-[14px]">check_circle</span>
+                  <span>Recommended for your system ({systemInfo.logicalCores} CPU cores detected)</span>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -306,7 +376,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleSelectDir} 
                   variant="outline" 
-                  className="rounded-xl font-bold border-outline-variant hover:bg-surface-container-low shrink-0"
+                  className="rounded-xl font-bold border-outline-variant shrink-0"
                 >
                   <FolderOpen className="w-4 h-4 mr-2" /> Browse
                 </Button>

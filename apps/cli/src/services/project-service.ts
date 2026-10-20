@@ -10,8 +10,10 @@ import {
   listProjects,
   renameProject,
   deleteProjectTracking,
-  setProjectPackageManager
+  setProjectPackageManager,
+  insertHistory
 } from "@package-guard/shared/repository";
+import { validateProjectName } from "@package-guard/shared/utils";
 import type { Project } from "@package-guard/shared/types";
 
 export interface ProjectResolution {
@@ -362,6 +364,16 @@ export function renameCurrentProject(
       } catch {
         // ignore
       }
+    }
+    try {
+      insertHistory(db, {
+        projectId: project.id,
+        eventType: "UPDATE",
+        description: `Project renamed from "${project.name}" to "${newName}"`,
+        detailsJson: JSON.stringify({ oldName: project.name, newName, action: "rename" })
+      });
+    } catch {
+      // ignore
     }
   }
   return success;

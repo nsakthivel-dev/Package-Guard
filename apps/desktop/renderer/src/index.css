@@ -212,8 +212,8 @@
   --secondary-foreground: 0 0% 100%;
   --muted: 220 14% 96%;
   --muted-foreground: 220 9% 46%;
-  --accent: 239 84% 59%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 237 100% 96%;
+  --accent-foreground: 245 58% 51%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
   --ring: 239 84% 59%;
@@ -263,11 +263,14 @@
 
 @layer utilities {
   .sidebar-glass {
-    @apply bg-sidebar border-r border-sidebar-border shadow-[var(--shadow-sidebar)];
+    background: hsl(var(--sidebar));
+    border-right: 1px solid hsl(var(--sidebar-border));
+    box-shadow: var(--shadow-sidebar);
   }
 
   .nav-item-active {
-    @apply bg-white/10 text-white;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
   }
 
   .logo-blob {
@@ -280,7 +283,7 @@
   }
 
   input[type="search"]::-webkit-search-cancel-button {
-    @apply hidden;
+    display: none;
   }
 
   [contenteditable][data-placeholder]:empty::before {
@@ -329,7 +332,7 @@
 
   .hover-elevate:hover:not(.no-default-hover-elevate)::after,
   .active-elevate:active:not(.no-default-active-elevate)::after {
-    background-color: var(--elevate-1);
+    background-color: transparent;
   }
 
   .electron-drag-region {
@@ -350,7 +353,7 @@
 
   .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
   .active-elevate-2:active:not(.no-default-active-elevate)::after {
-    background-color: var(--elevate-2);
+    background-color: transparent;
   }
 
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
@@ -368,7 +371,9 @@
     font-variation-settings: 'FILL' 1;
   }
   .glass-card {
-    @apply bg-white border border-card-border shadow-[var(--shadow-premium)];
+    background-color: #ffffff;
+    border: 1px solid hsl(var(--card-border));
+    box-shadow: var(--shadow-premium);
   }
   .chart-bar {
     width: 120px;
@@ -405,14 +410,15 @@
   }
 
   .primary-btn-solid:hover {
-    filter: brightness(1.05);
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+    background: #4338CA;
+    color: #FFFFFF;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
     transform: translateY(-0.5px);
   }
 
   .primary-btn-solid:active {
     transform: translateY(0);
-    filter: brightness(0.98);
+    background: hsl(239 84% 48%);
   }
 
   .ghost-btn {
@@ -423,17 +429,30 @@
   }
 
   .ghost-btn:hover {
-    background: hsl(var(--surface-container));
-    border-color: hsl(var(--outline-variant));
+    background: #E8E9FF;
+    border-color: #6366F1;
+    color: #4338CA;
   }
 
   .stat-card-icon {
-    @apply w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: hsl(var(--muted-foreground));
     background: hsl(var(--muted));
   }
 
   .empty-state-icon {
-    @apply w-16 h-16 rounded-full flex items-center justify-center mb-4;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
   }
@@ -441,7 +460,8 @@
 
 @layer base {
   * {
-    @apply border-border cursor-default;
+    border-color: hsl(var(--border));
+    cursor: default;
   }
 
   ::-webkit-scrollbar {
@@ -452,14 +472,18 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-outline-variant rounded-[10px];
+    background-color: hsl(var(--outline-variant));
+    border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/40;
+    background-color: hsla(var(--muted-foreground), 0.4);
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
 

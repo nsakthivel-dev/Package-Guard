@@ -75,6 +75,7 @@ export const PackageStatus = {
   major: "major",
   failed: "failed",
   unknown: "unknown",
+  ignored: "ignored",
 } as const;
 
 export interface Package {
@@ -197,6 +198,13 @@ export interface Settings {
   autoSnapshotBeforeUpdate: boolean;
   theme: SettingsTheme;
   customScanPaths?: string[];
+  defaultVenvScanDir?: string;
+  securityLevel?: "Relaxed" | "Standard" | "Strict";
+  ignoredPackages?: string[];
+  autoScanVenvsOnStartup?: boolean;
+  includeVenvsInDashboard?: boolean;
+  backgroundPermission?: boolean | null;
+  dontAskAgain?: boolean;
 }
 
 export type SettingsUpdateTheme =
@@ -215,10 +223,19 @@ export interface SettingsUpdate {
   autoSnapshotBeforeUpdate?: boolean;
   theme?: SettingsUpdateTheme;
   customScanPaths?: string[];
+  defaultVenvScanDir?: string;
+  securityLevel?: "Relaxed" | "Standard" | "Strict";
+  ignoredPackages?: string[];
+  autoScanVenvsOnStartup?: boolean;
+  includeVenvsInDashboard?: boolean;
+  backgroundPermission?: boolean | null;
+  dontAskAgain?: boolean;
 }
 
 export interface DashboardSummary {
   totalPackages: number;
+  activePackages?: number;
+  ignoredPackages?: number;
   totalEnvironments: number;
   totalVenvs: number;
   upToDate: number;
@@ -240,6 +257,7 @@ export interface StatusBreakdown {
   major: number;
   failed: number;
   unknown: number;
+  ignored?: number;
 }
 
 export type ListPackagesParams = {

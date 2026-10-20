@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   getAppDataDir,
   getDbPath,
@@ -114,11 +114,21 @@ export function getSystemPaths(projectDir?: string): Record<string, string> {
   };
 }
 
+const ALLOWED_TOOLS = new Set(["npm", "pnpm", "yarn", "bun", "pip", "python", "node"]);
+
 function checkToolVersion(cmd: string): string | null {
+  if (!ALLOWED_TOOLS.has(cmd)) {
+    return null;
+  }
   try {
     const isWin = process.platform === "win32";
-    const fullCmd = isWin && (cmd === "npm" || cmd === "pnpm" || cmd === "yarn") ? `${cmd}.cmd --version` : `${cmd} --version`;
-    const out = execSync(fullCmd, { encoding: "utf8", timeout: 2000 }).trim();
+    const executable = isWin && (cmd === "npm" || cmd === "pnpm" || cmd === "yarn") ? `${cmd}.cmd` : cmd;
+    const out = execFileSync(executable, ["--version"], {
+      encoding: "utf8",
+      timeout: 2000,
+      shell: isWin,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
     return out.split("\n")[0] || null;
   } catch {
     return null;

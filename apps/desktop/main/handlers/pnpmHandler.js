@@ -189,7 +189,22 @@ async function listPackages(envPath) {
  * - If envPath is a project directory, runs `pnpm add <pkg>` in that directory.
  * - If envPath is null/'pnpm', runs `pnpm add -g <pkg>`.
  */
+function validatePackage(packageName, targetVersion) {
+  if (!packageName || typeof packageName !== 'string' || !/^(@[a-zA-Z0-9_\-\.]+\/)?[a-zA-Z0-9_\-\.]+$/.test(packageName.trim())) {
+    throw new Error(`Invalid package name: "${packageName}"`);
+  }
+  if (targetVersion && (typeof targetVersion !== 'string' || !/^[a-zA-Z0-9_\-\.\^\~><=@+ ]+$/.test(targetVersion.trim()))) {
+    throw new Error(`Invalid package version: "${targetVersion}"`);
+  }
+}
+
 async function updatePnpmPackage(packageName, targetVersion, envPath, onProgress) {
+  try {
+    validatePackage(packageName, targetVersion);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   const exe = await resolvePnpmExecutable();
   if (!exe) {
     return { success: false, package: packageName, error: 'pnpm executable not found' };
@@ -250,6 +265,12 @@ async function updatePnpmPackage(packageName, targetVersion, envPath, onProgress
 // ─── Remove / uninstall a package ─────────────────────────────────────────────
 
 async function deletePnpmPackage(packageName, envPath) {
+  try {
+    validatePackage(packageName);
+  } catch (err) {
+    return { success: false, package: packageName, error: err.message };
+  }
+
   const exe = await resolvePnpmExecutable();
   if (!exe) {
     return { success: false, package: packageName, error: 'pnpm executable not found' };

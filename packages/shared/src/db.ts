@@ -1,4 +1,5 @@
 import type BetterSqlite3 from "better-sqlite3";
+import * as path from "node:path";
 import { getDbPath } from "./paths.js";
 
 // ---------------------------------------------------------------------------
@@ -52,9 +53,9 @@ function getConstructor(): typeof BetterSqlite3 {
  * Opens (or creates) the SQLite database and applies the schema migration.
  * Safe to call multiple times — all DDL uses IF NOT EXISTS.
  */
-export function openDatabase(): BetterSqlite3.Database {
+export function openDatabase(customPath?: string): BetterSqlite3.Database {
   const Ctor = getConstructor();
-  const dbPath = getDbPath();
+  const dbPath = customPath ? path.resolve(customPath) : getDbPath();
   const db = new Ctor(dbPath);
 
   // WAL allows the CLI and Electron to read concurrently
@@ -191,6 +192,36 @@ function applyMigrations(db: BetterSqlite3.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_security_advisories_pkg
       ON security_advisories (package_name);
+
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      id             TEXT    NOT NULL PRIMARY KEY,
+      email          TEXT    NOT NULL UNIQUE,
+      display_name   TEXT    NOT NULL,
+      avatar_url     TEXT,
+      phone_number   TEXT,
+      email_verified INTEGER NOT NULL DEFAULT 1,
+      provider       TEXT    NOT NULL DEFAULT 'google',
+      created_at     TEXT    NOT NULL,
+      updated_at     TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_profiles_email
+      ON user_profiles (email);
+
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id            TEXT    NOT NULL PRIMARY KEY,
+      user_id       TEXT    NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+      access_token  TEXT,
+      refresh_token TEXT,
+      id_token      TEXT,
+      expires_at    TEXT,
+      is_active     INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT    NOT NULL,
+      updated_at    TEXT    NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id
+      ON auth_sessions (user_id);
   `);
 
   // Safe migration for existing databases: ensure delivery_type column exists

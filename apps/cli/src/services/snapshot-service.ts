@@ -2,7 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
-import { getSnapshotStorageDir } from "@package-guard/shared/paths";
+import {
+  getSnapshotStorageDir,
+  assertInsideDirectory,
+  assertSafeWritePath,
+  assertSafeSnapshotId,
+  assertSafeRelativePath
+} from "@package-guard/shared/paths";
 import {
   insertSnapshot,
   getSnapshotById,
@@ -159,13 +165,16 @@ export async function restoreSnapshot(
   snapshotId: string,
   projectDir: string
 ): Promise<{ restoredFiles: number; snapshot: Snapshot }> {
+  assertSafeSnapshotId(snapshotId);
   const { snapshot, files } = getSnapshot(db, snapshotId);
   if (!snapshot) {
     throw new Error(`Snapshot '${snapshotId}' not found.`);
   }
 
   const storageRoot = getSnapshotStorageDir();
-  const snapshotDir = path.join(storageRoot, snapshotId);
+  const snapshotDir = path.resolve(storageRoot, snapshotId);
+  assertInsideDirectory(snapshotDir, storageRoot);
+
   if (!fs.existsSync(snapshotDir)) {
     throw new Error(`Snapshot storage folder missing for snapshot '${snapshotId}'.`);
   }
@@ -173,12 +182,16 @@ export async function restoreSnapshot(
   // Restore every file in snapshot to projectDir
   let restored = 0;
   for (const f of files) {
+    assertSafeRelativePath(f.relative_path);
     const sourcePath = f.storage_path && fs.existsSync(f.storage_path)
-      ? f.storage_path
-      : path.join(snapshotDir, f.relative_path);
+      ? path.resolve(f.storage_path)
+      : path.resolve(snapshotDir, f.relative_path);
+    assertInsideDirectory(sourcePath, snapshotDir);
 
     if (fs.existsSync(sourcePath)) {
-      const targetPath = path.join(projectDir, f.relative_path);
+      const targetPath = path.resolve(projectDir, f.relative_path);
+      assertInsideDirectory(targetPath, projectDir);
+      assertSafeWritePath(targetPath);
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.copyFileSync(sourcePath, targetPath);
       restored++;
@@ -192,11 +205,13 @@ export function deleteSnapshot(
   db: BetterSqlite3.Database,
   snapshotId: string
 ): boolean {
+  assertSafeSnapshotId(snapshotId);
   const snapshot = getSnapshotById(db, snapshotId);
   if (!snapshot) return false;
 
   const storageRoot = getSnapshotStorageDir();
-  const snapshotDir = path.join(storageRoot, snapshotId);
+  const snapshotDir = path.resolve(storageRoot, snapshotId);
+  assertInsideDirectory(snapshotDir, storageRoot);
   try {
     if (fs.existsSync(snapshotDir)) {
       fs.rmSync(snapshotDir, { recursive: true, force: true });
@@ -287,8 +302,11 @@ export function importSnapshot(
 
   const origSnap = data.snapshot as Snapshot;
   const newSnapshotId = generateNextSnapshotId(db, targetProjectId);
+  assertSafeSnapshotId(newSnapshotId);
+
   const storageRoot = getSnapshotStorageDir();
-  const snapshotDir = path.join(storageRoot, newSnapshotId);
+  const snapshotDir = path.resolve(storageRoot, newSnapshotId);
+  assertInsideDirectory(snapshotDir, storageRoot);
   fs.mkdirSync(snapshotDir, { recursive: true });
 
   const snapshotFilesToInsert: Array<{
@@ -301,7 +319,11 @@ export function importSnapshot(
   }> = [];
 
   for (const f of data.files) {
-    const targetFile = path.join(snapshotDir, f.relativePath);
+    assertSafeRelativePath(f.relativePath);
+    const targetFile = path.resolve(snapshotDir, f.relativePath);
+    assertInsideDirectory(targetFile, snapshotDir);
+    assertSafeWritePath(targetFile);
+
     fs.mkdirSync(path.dirname(targetFile), { recursive: true });
     const buffer = Buffer.from(f.contentBase64, "base64");
     fs.writeFileSync(targetFile, buffer);

@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import type { DiffEntry, Project, SnapshotPackage } from '@packageguard/shared/types';
 import { ALL_LOCKFILES } from '@packageguard/shared/constants';
+import { assertSafePackageManager } from '@packageguard/shared/utils';
 import { getProjectById, getSnapshot } from '@packageguard/database';
 import { computeDiff, getWorkingTreeDiff } from '../diff/index.js';
 
@@ -53,12 +54,43 @@ function splitByType(packages: SnapshotPackage[]): {
 }
 
 async function runInstall(project: Project, verbose: boolean = false): Promise<void> {
-  const pm = project.packageManager || 'npm';
+  const rawPm = project.packageManager || 'npm';
+  assertSafePackageManager(rawPm);
+  const normalizedPm = rawPm.trim().toLowerCase();
+
+  const isWin = process.platform === 'win32';
+  let command = 'npm';
+  let commandArgs = ['install'];
+
+  if (isWin) {
+    command = process.env.ComSpec || 'cmd.exe';
+    if (normalizedPm === 'pnpm') {
+      commandArgs = ['/d', '/s', '/c', 'pnpm.cmd', 'install'];
+    } else if (normalizedPm === 'yarn') {
+      commandArgs = ['/d', '/s', '/c', 'yarn.cmd', 'install'];
+    } else if (normalizedPm === 'bun') {
+      commandArgs = ['/d', '/s', '/c', 'bun.cmd', 'install'];
+    } else {
+      commandArgs = ['/d', '/s', '/c', 'npm.cmd', 'install'];
+    }
+  } else {
+    if (normalizedPm === 'pnpm') {
+      command = 'pnpm';
+    } else if (normalizedPm === 'yarn') {
+      command = 'yarn';
+    } else if (normalizedPm === 'bun') {
+      command = 'bun';
+    } else {
+      command = 'npm';
+    }
+  }
+
   return new Promise((resolve, reject) => {
-    const child: any = spawn(pm, ['install'], {
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+    const child: any = spawn(command, commandArgs, {
       cwd: project.path,
       stdio: verbose ? 'inherit' : 'pipe',
-      shell: true,
+      shell: false,
       env: { ...process.env },
     });
     let stderr = '';
@@ -68,7 +100,7 @@ async function runInstall(project: Project, verbose: boolean = false): Promise<v
     child.on('error', (err: Error) => reject(err));
     child.on('close', (code: number) => {
       if (code === 0) resolve();
-      else reject(new Error(`${pm} install exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
+      else reject(new Error(`${normalizedPm} install exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
     });
   });
 }

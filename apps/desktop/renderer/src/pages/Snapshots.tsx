@@ -117,11 +117,105 @@ export default function Snapshots() {
   const [restoringId, setRestoringId]       = useState<any | null>(null);
   const [envFilter, setEnvFilter]           = useState<EnvFilter>("all");
   const [open, setOpen]                     = useState(false);
+  const [expandedPkgKey, setExpandedPkgKey] = useState<string | null>(null);
+  const [pkgMetaMap, setPkgMetaMap]         = useState<Record<string, any>>({});
+  const [loadingMetaKey, setLoadingMetaKey] = useState<string | null>(null);
 
   useEffect(() => {
     setSnapshotSearchQuery("");
     setFilterType("all");
+    setExpandedPkgKey(null);
   }, [viewingSnapshot?.id]);
+
+  const handleToggleExpand = async (pkgKey: string, pkg: any, ecosystem: string) => {
+    if (expandedPkgKey === pkgKey) {
+      setExpandedPkgKey(null);
+      return;
+    }
+    setExpandedPkgKey(pkgKey);
+
+    if (pkgMetaMap[pkgKey] || (pkg.description && pkg.description !== "No description available")) {
+      return;
+    }
+
+    const normEco = (ecosystem === "venv" || ecosystem === "conda") ? "pip" : ecosystem;
+    const cacheKey = `pg_meta_${normEco}_${pkg.name.toLowerCase()}`;
+
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        setPkgMetaMap((prev) => ({ ...prev, [pkgKey]: parsed }));
+        return;
+      }
+    } catch {}
+
+    setLoadingMetaKey(pkgKey);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      let fetched: any = {
+        description: pkg.description || null,
+        license: pkg.license || null,
+        author: pkg.author || null,
+        homepage: pkg.homepage || null,
+        dependencies: pkg.dependencies ? Object.keys(pkg.dependencies) : undefined,
+      };
+
+      if (normEco === "pip") {
+        const pypiName = pkg.name.toLowerCase().replace(/[._]/g, "-");
+        const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(pypiName)}/json`, {
+          signal: controller.signal,
+          headers: { "Accept": "application/json" },
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          fetched = {
+            description: data.info?.summary || data.info?.description || null,
+            license: data.info?.license || null,
+            author: data.info?.author || data.info?.maintainer || null,
+            homepage: data.info?.home_page || data.info?.project_urls?.Homepage || null,
+            dependencies: Array.isArray(data.info?.requires_dist)
+              ? data.info.requires_dist.map((d: string) => d.split(";")[0].trim().split(" ")[0]).filter(Boolean)
+              : undefined,
+          };
+        }
+      } else {
+        const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/latest`, {
+          signal: controller.signal,
+          headers: { "Accept": "application/json" },
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          fetched = {
+            description: data.description || null,
+            license: typeof data.license === "string" ? data.license : data.license?.type || null,
+            author: typeof data.author === "string" ? data.author : data.author?.name || null,
+            homepage: data.homepage || null,
+            dependencies: data.dependencies ? Object.keys(data.dependencies) : undefined,
+          };
+        }
+      }
+
+      setPkgMetaMap((prev) => ({ ...prev, [pkgKey]: fetched }));
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(fetched));
+      } catch {}
+    } catch {
+      const fallback = {
+        description: pkg.description || null,
+        license: pkg.license || null,
+        author: pkg.author || null,
+        homepage: pkg.homepage || null,
+      };
+      setPkgMetaMap((prev) => ({ ...prev, [pkgKey]: fallback }));
+    } finally {
+      setLoadingMetaKey(null);
+    }
+  };
 
   const { data: allPackages } = useListPackages();
 
@@ -314,7 +408,7 @@ export default function Snapshots() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold transition-all active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] font-semibold transition-all active:scale-95 hover:bg-[#4338CA] text-white cursor-pointer"
           style={{
             background: PALETTE.major,
             color: "#fff",
@@ -342,15 +436,15 @@ export default function Snapshots() {
       {/* ── Loading skeletons ─────────────────────────────────────────────── */}
       {isLoading && (
         <div className="bg-surface-container-lowest border border-card-border rounded-xl shadow-[var(--shadow-premium)] overflow-hidden">
-          <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/40">
-            {["Snapshot","Environment","Packages","Date","Status",""].map((h) => (
+          <div className="grid grid-cols-[minmax(0,2.5fr)_90px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/40">
+            {["Snapshot Name", "Packages", "Date Created", "Status", ""].map((h) => (
               <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
             ))}
           </div>
           <div className="divide-y divide-card-border">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-3 items-center">
-                {[160, 90, 60, 80, 60, 140].map((w, j) => (
+              <div key={i} className="grid grid-cols-[minmax(0,2.5fr)_90px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-3 items-center">
+                {[200, 60, 90, 60, 140].map((w, j) => (
                   <div key={j} className="h-4 bg-surface-container animate-pulse rounded" style={{ maxWidth: w }} />
                 ))}
               </div>
@@ -369,7 +463,7 @@ export default function Snapshots() {
           </p>
           <button
             onClick={() => setShowCreate(true)}
-            className="mt-6 flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold transition-all active:scale-95"
+            className="mt-6 flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-semibold transition-all active:scale-95 hover:bg-[#4338CA] text-white cursor-pointer"
             style={{
               background: PALETTE.major,
               color: "#fff",
@@ -410,8 +504,8 @@ export default function Snapshots() {
                 </div>
 
                 {/* Table header */}
-                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/20">
-                  {["Snapshot Name","Package","Packages","Date Created","Status",""].map((h) => (
+                <div className="grid grid-cols-[minmax(0,2.5fr)_90px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-2 border-b border-card-border bg-surface-container/20">
+                  {["Snapshot Name", "Packages", "Date Created", "Status", ""].map((h) => (
                     <span key={h} className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
                   ))}
                 </div>
@@ -424,7 +518,7 @@ export default function Snapshots() {
                     return (
                       <div
                         key={snap.id}
-                        className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_70px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-3 items-center hover:bg-surface-container/50 transition-colors group"
+                        className="grid grid-cols-[minmax(0,2.5fr)_90px_minmax(0,1.2fr)_80px_210px] gap-3 px-5 py-3 items-center hover:bg-[#F0F0FF] transition-colors group"
                       >
                         {/* Name */}
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -438,14 +532,6 @@ export default function Snapshots() {
                             )}
                           </div>
                         </div>
-
-                        {/* Package */}
-                        <span className="text-[12px] font-mono text-muted-foreground truncate">
-                          {(snap as any).packageName
-                            ? <>{(snap as any).packageName} <span className="opacity-50">@{(snap as any).packageVersion}</span></>
-                            : <span className="opacity-40">—</span>
-                          }
-                        </span>
 
                         {/* Package count */}
                         <div className="flex items-center gap-1.5">
@@ -469,7 +555,7 @@ export default function Snapshots() {
                         <div className="flex items-center justify-end gap-2 shrink-0">
                           <button
                             onClick={() => setViewingSnapshot(snap)}
-                            className="relative inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 shrink-0 select-none border border-card-border bg-surface-container/70 hover:bg-surface-container hover:text-primary text-on-surface active:scale-[0.98] shadow-xs cursor-pointer"
+                            className="relative inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 shrink-0 select-none border border-card-border bg-surface-container/70 hover:bg-[#E8E9FF] hover:text-[#4338CA] hover:border-[#6366F1] text-on-surface active:scale-[0.98] shadow-xs cursor-pointer"
                             title="View snapshot details and packages"
                           >
                             <span className="material-symbols-outlined text-[14px] shrink-0 text-muted-foreground">visibility</span>
@@ -482,7 +568,7 @@ export default function Snapshots() {
                               "relative inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 shrink-0 select-none cursor-pointer",
                               isRestoring
                                 ? "opacity-60 cursor-not-allowed"
-                                : "hover:shadow-sm hover:brightness-95 active:scale-[0.98]"
+                                : "hover:shadow-sm hover:bg-[#E8E9FF] hover:text-[#4338CA] hover:border-[#6366F1] active:scale-[0.98]"
                             )}
                             style={{
                               background: `${PALETTE.major}18`,
@@ -644,7 +730,15 @@ export default function Snapshots() {
       </Dialog>
 
       {/* ── View Snapshot Details Dialog ───────────────────────────────────── */}
-      <Dialog open={Boolean(viewingSnapshot)} onOpenChange={(open) => !open && setViewingSnapshot(null)}>
+      <Dialog
+        open={Boolean(viewingSnapshot)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setViewingSnapshot(null);
+            setExpandedPkgKey(null);
+          }
+        }}
+      >
         <DialogContent className="rounded-2xl border-card-border bg-surface-container-lowest shadow-2xl p-6 max-w-2xl max-h-[88vh] flex flex-col overflow-hidden">
           {viewingSnapshot && (
             <>
@@ -758,7 +852,8 @@ export default function Snapshots() {
               {/* Packages List / Table */}
               <div className="border border-card-border rounded-xl overflow-hidden flex-1 flex flex-col min-h-0 bg-surface-container/20">
                 {/* Table Header */}
-                <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_90px_110px] gap-2 px-4 py-2 bg-surface-container/50 border-b border-card-border text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 text-left">
+                <div className="grid grid-cols-[24px_minmax(0,2fr)_minmax(0,1.2fr)_90px_100px] gap-2 px-4 py-2 bg-surface-container/50 border-b border-card-border text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0 text-left items-center">
+                  <span></span>
                   <span>Package Name</span>
                   <span>Saved Version</span>
                   <span>Ecosystem</span>
@@ -772,65 +867,189 @@ export default function Snapshots() {
                       const ecosystem = (pkg.ecosystem || pkg.source || (viewingSnapshot.environmentName?.toLowerCase().includes("venv") ? "pip" : "npm")).toLowerCase();
                       const version = pkg.version || pkg.installedVersion || "—";
                       const isDev = pkg.type === "devDependency";
+                      const pkgKey = `${pkg.name}-${pkg.version || idx}`;
+                      const isExpanded = expandedPkgKey === pkgKey;
+                      const meta = pkgMetaMap[pkgKey];
+                      const isLoadingMeta = loadingMetaKey === pkgKey;
+
+                      const description = meta?.description ?? pkg.description;
+                      const license = meta?.license ?? pkg.license;
+                      const author = meta?.author ?? pkg.author;
+                      const dependencies: string[] | undefined = meta?.dependencies ?? (Array.isArray(pkg.dependencies) ? pkg.dependencies : undefined);
+                      const registryUrl = ecosystem === "pip"
+                        ? `https://pypi.org/project/${encodeURIComponent(pkg.name.toLowerCase().replace(/[._]/g, "-"))}/`
+                        : `https://www.npmjs.com/package/${encodeURIComponent(pkg.name)}`;
 
                       return (
-                        <div
-                          key={`${pkg.name}-${idx}`}
-                          className="grid grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_90px_110px] gap-2 px-4 py-2.5 items-center hover:bg-surface-container/40 transition-colors text-left"
-                        >
-                          {/* Name */}
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="material-symbols-outlined text-[15px] text-muted-foreground shrink-0">
-                              {ecosystem === "pip" ? "terminal" : "inventory_2"}
-                            </span>
-                            <span className="text-[13px] font-medium text-on-surface truncate" title={pkg.name}>
-                              {pkg.name}
-                            </span>
-                            {pkg.status === "missing" && (
-                              <span className="text-[10px] text-amber-500 font-medium shrink-0" title="Missing from environment">
-                                (missing)
-                              </span>
+                        <div key={pkgKey} className="transition-colors">
+                          <div
+                            onClick={() => handleToggleExpand(pkgKey, pkg, ecosystem)}
+                            className={cn(
+                              "grid grid-cols-[24px_minmax(0,2fr)_minmax(0,1.2fr)_90px_100px] gap-2 px-4 py-2.5 items-center cursor-pointer select-none transition-colors text-left",
+                              isExpanded
+                                ? "bg-primary/5 dark:bg-primary/10"
+                                : "hover:bg-surface-container/50"
                             )}
-                          </div>
+                            title="Click to view package details and description"
+                          >
+                            {/* Expandable Chevron Affordance */}
+                            <div className="flex items-center justify-center">
+                              <span
+                                className={cn(
+                                  "material-symbols-outlined text-[16px] text-muted-foreground transition-transform duration-200",
+                                  isExpanded ? "rotate-90 text-primary" : "hover:text-on-surface"
+                                )}
+                              >
+                                chevron_right
+                              </span>
+                            </div>
 
-                          {/* Version */}
-                          <div className="min-w-0">
-                            <span className="inline-block font-mono text-[11px] px-2 py-0.5 rounded bg-surface-container border border-card-border/80 text-on-surface truncate max-w-full">
-                              {version}
-                            </span>
-                          </div>
-
-                          {/* Ecosystem */}
-                          <div>
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border",
-                                ecosystem === "pip"
-                                  ? "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20"
-                                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                            {/* Name */}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="material-symbols-outlined text-[15px] text-muted-foreground shrink-0">
+                                {ecosystem === "pip" ? "terminal" : "inventory_2"}
+                              </span>
+                              <span className="text-[13px] font-medium text-on-surface truncate" title={pkg.name}>
+                                {pkg.name}
+                              </span>
+                              {pkg.status === "missing" && (
+                                <span className="text-[10px] text-amber-500 font-medium shrink-0" title="Missing from environment">
+                                  (missing)
+                                </span>
                               )}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                              {ecosystem}
-                            </span>
+                            </div>
+
+                            {/* Version */}
+                            <div className="min-w-0">
+                              <span className="inline-block font-mono text-[11px] px-2 py-0.5 rounded bg-surface-container border border-card-border/80 text-on-surface truncate max-w-full">
+                                {version}
+                              </span>
+                            </div>
+
+                            {/* Ecosystem */}
+                            <div>
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border",
+                                  ecosystem === "pip"
+                                    ? "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20"
+                                    : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                )}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                {ecosystem}
+                              </span>
+                            </div>
+
+                            {/* Type / Metadata */}
+                            <div className="flex items-center justify-end pr-1">
+                              {isDev ? (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-surface-container text-muted-foreground border border-card-border/60">
+                                  devDependency
+                                </span>
+                              ) : pkg.type === "python" ? (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                                  package
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                  {pkg.type || "dependency"}
+                                </span>
+                              )}
+                            </div>
                           </div>
 
-                          {/* Type / Metadata */}
-                          <div className="flex items-center justify-end pr-1">
-                            {isDev ? (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-surface-container text-muted-foreground border border-card-border/60">
-                                devDependency
-                              </span>
-                            ) : pkg.type === "python" ? (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                                package
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
-                                {pkg.type || "dependency"}
-                              </span>
-                            )}
-                          </div>
+                          {/* Accordion Details Panel */}
+                          {isExpanded && (
+                            <div className="px-5 py-3.5 bg-surface-container/30 dark:bg-surface-container-lowest/70 border-t border-card-border/50 text-left space-y-3 animate-in fade-in slide-in-from-top-1 duration-150">
+                              {/* Description Section */}
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">
+                                  Description
+                                </span>
+                                {isLoadingMeta ? (
+                                  <div className="flex items-center gap-2 py-1 text-[12px] text-muted-foreground">
+                                    <span className="material-symbols-outlined text-[15px] animate-spin text-primary">
+                                      progress_activity
+                                    </span>
+                                    <span>Fetching package metadata…</span>
+                                  </div>
+                                ) : (
+                                  <p className="text-[12px] text-on-surface leading-relaxed">
+                                    {description ? (
+                                      description
+                                    ) : (
+                                      <span className="text-muted-foreground italic">
+                                        No description available for this package
+                                      </span>
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Metadata Badges & Registry Link */}
+                              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-card-border/40">
+                                {license && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-surface-container border border-card-border/80 text-muted-foreground">
+                                    <span className="material-symbols-outlined text-[13px]">policy</span>
+                                    <span>License: {license}</span>
+                                  </span>
+                                )}
+
+                                {author && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-surface-container border border-card-border/80 text-muted-foreground">
+                                    <span className="material-symbols-outlined text-[13px]">person</span>
+                                    <span>Author: {author}</span>
+                                  </span>
+                                )}
+
+                                <a
+                                  href={registryUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const api = (window as any).electronAPI;
+                                    if (api?.openExternal) {
+                                      e.preventDefault();
+                                      api.openExternal(registryUrl);
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[11px] font-medium text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/15 border border-primary/20 ml-auto transition-colors cursor-pointer"
+                                  title={`Open ${pkg.name} on ${ecosystem === "pip" ? "PyPI" : "npm"}`}
+                                >
+                                  <span>View on {ecosystem === "pip" ? "PyPI" : "npm"}</span>
+                                  <span className="material-symbols-outlined text-[13px]">open_in_new</span>
+                                </a>
+                              </div>
+
+                              {/* Dependencies (if present) */}
+                              {dependencies && dependencies.length > 0 && (
+                                <div className="pt-2 border-t border-card-border/40">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                      Resolved Dependencies ({dependencies.length})
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                                    {dependencies.slice(0, 16).map((dep, dIdx) => (
+                                      <span
+                                        key={dIdx}
+                                        className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-container border border-card-border/70 text-on-surface"
+                                      >
+                                        {dep}
+                                      </span>
+                                    ))}
+                                    {dependencies.length > 16 && (
+                                      <span className="text-[10px] text-muted-foreground self-center px-1">
+                                        +{dependencies.length - 16} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })

@@ -180,6 +180,30 @@ export const EXIT_PROJECT_ERROR = 3;
 export const EXIT_VERIFICATION_ERROR = 4;
 export const EXIT_SERVICE_ERROR = 5;
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  phoneNumber?: string | null;
+  emailVerified: boolean;
+  provider: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthSession {
+  id: string;
+  userId: string;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  idToken?: string | null;
+  expiresAt?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Re-export compatibility types from types/index.js if needed
 export * from "./types/index.js";
 

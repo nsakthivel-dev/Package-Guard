@@ -13,7 +13,7 @@ export async function executeInit(
   isJson = false
 ): Promise<number> {
   const jsonMode = isJson || args.includes("--json") || args.includes("-j");
-  const cleanArgs = args.filter((a) => a !== "--json" && a !== "-j");
+  const cleanArgs = args.filter((a) => !a.startsWith("-"));
   const customName = cleanArgs[0];
 
   const result = initializeProject(db, targetDir, customName);

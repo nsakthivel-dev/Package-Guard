@@ -1,5 +1,5 @@
 import type BetterSqlite3 from "better-sqlite3";
-import type { Project, Snapshot, SnapshotFile, ScanResult } from "./types.js";
+import type { Project, Snapshot, SnapshotFile, ScanResult, UserProfile, AuthSession } from "./types.js";
 
 export type EventStatus = "PENDING" | "SYNCED" | "FAILED";
 export type DeliveryType = "LIVE" | "SYNCED";
@@ -659,5 +659,272 @@ export function listQueue(
   }
   const stmt = db.prepare(`SELECT * FROM events ORDER BY created_at ASC, rowid ASC`);
   return stmt.all() as CommunicationEvent[];
+}
+
+// ---------------------------------------------------------------------------
+// User Profile & Authentication Session Operations
+// ---------------------------------------------------------------------------
+
+export function getUserProfile(
+  db: BetterSqlite3.Database,
+  id: string
+): UserProfile | null {
+  const stmt = db.prepare(`SELECT * FROM user_profiles WHERE id = ?`);
+  const row = stmt.get(id) as any;
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    phoneNumber: row.phone_number,
+    emailVerified: Boolean(row.email_verified),
+    provider: row.provider,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getUserProfileByEmail(
+  db: BetterSqlite3.Database,
+  email: string
+): UserProfile | null {
+  const stmt = db.prepare(`SELECT * FROM user_profiles WHERE LOWER(email) = LOWER(?)`);
+  const row = stmt.get(email) as any;
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    phoneNumber: row.phone_number,
+    emailVerified: Boolean(row.email_verified),
+    provider: row.provider,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function upsertUserProfile(
+  db: BetterSqlite3.Database,
+  profile: UserProfile
+): UserProfile {
+  const now = new Date().toISOString();
+  const existing = getUserProfile(db, profile.id) || getUserProfileByEmail(db, profile.email);
+  if (existing) {
+    const stmt = db.prepare(`
+      UPDATE user_profiles
+      SET email = ?,
+          display_name = ?,
+          avatar_url = ?,
+          phone_number = ?,
+          email_verified = ?,
+          provider = ?,
+          updated_at = ?
+      WHERE id = ?
+    `);
+    stmt.run(
+      profile.email,
+      profile.displayName,
+      profile.avatarUrl ?? existing.avatarUrl ?? null,
+      profile.phoneNumber ?? existing.phoneNumber ?? null,
+      profile.emailVerified !== undefined ? (profile.emailVerified ? 1 : 0) : (existing.emailVerified ? 1 : 0),
+      profile.provider || existing.provider || 'google',
+      now,
+      existing.id
+    );
+    return getUserProfile(db, existing.id)!;
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO user_profiles (
+      id, email, display_name, avatar_url, phone_number, email_verified, provider, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  stmt.run(
+    profile.id,
+    profile.email,
+    profile.displayName,
+    profile.avatarUrl ?? null,
+    profile.phoneNumber ?? null,
+    profile.emailVerified ? 1 : 0,
+    profile.provider || 'google',
+    profile.createdAt || now,
+    profile.updatedAt || now
+  );
+  return getUserProfile(db, profile.id)!;
+}
+
+export function updateUserProfile(
+  db: BetterSqlite3.Database,
+  id: string,
+  updates: Partial<UserProfile>
+): UserProfile | null {
+  const existing = getUserProfile(db, id);
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const displayName = updates.displayName !== undefined ? updates.displayName : existing.displayName;
+  const avatarUrl = updates.avatarUrl !== undefined ? updates.avatarUrl : existing.avatarUrl;
+  const phoneNumber = updates.phoneNumber !== undefined ? updates.phoneNumber : existing.phoneNumber;
+
+  const stmt = db.prepare(`
+    UPDATE user_profiles
+    SET display_name = ?,
+        avatar_url = ?,
+        phone_number = ?,
+        updated_at = ?
+    WHERE id = ?
+  `);
+  stmt.run(displayName, avatarUrl, phoneNumber, now, id);
+  return getUserProfile(db, id);
+}
+
+export function deleteUserProfile(
+  db: BetterSqlite3.Database,
+  id: string
+): boolean {
+  const stmt = db.prepare(`DELETE FROM user_profiles WHERE id = ?`);
+  const res = stmt.run(id);
+  return res.changes > 0;
+}
+
+export function createAuthSession(
+  db: BetterSqlite3.Database,
+  session: AuthSession
+): AuthSession {
+  // Deactivate any existing active sessions
+  db.prepare(`UPDATE auth_sessions SET is_active = 0 WHERE is_active = 1`).run();
+
+  const stmt = db.prepare(`
+    INSERT INTO auth_sessions (
+      id, user_id, access_token, refresh_token, id_token, expires_at, is_active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+  `);
+  const now = new Date().toISOString();
+  stmt.run(
+    session.id,
+    session.userId,
+    session.accessToken ?? null,
+    session.refreshToken ?? null,
+    session.idToken ?? null,
+    session.expiresAt ?? null,
+    session.createdAt || now,
+    session.updatedAt || now
+  );
+  return {
+    ...session,
+    isActive: true,
+  };
+}
+
+export function getActiveAuthSession(
+  db: BetterSqlite3.Database
+): (AuthSession & { user: UserProfile }) | null {
+  const stmt = db.prepare(`
+    SELECT s.*,
+           u.id as u_id,
+           u.email as u_email,
+           u.display_name as u_display_name,
+           u.avatar_url as u_avatar_url,
+           u.phone_number as u_phone_number,
+           u.email_verified as u_email_verified,
+           u.provider as u_provider,
+           u.created_at as u_created_at,
+           u.updated_at as u_updated_at
+    FROM auth_sessions s
+    INNER JOIN user_profiles u ON s.user_id = u.id
+    WHERE s.is_active = 1
+    ORDER BY s.created_at DESC
+    LIMIT 1
+  `);
+  const row = stmt.get() as any;
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    accessToken: row.access_token,
+    refreshToken: row.refresh_token,
+    idToken: row.id_token,
+    expiresAt: row.expires_at,
+    isActive: Boolean(row.is_active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    user: {
+      id: row.u_id,
+      email: row.u_email,
+      displayName: row.u_display_name,
+      avatarUrl: row.u_avatar_url,
+      phoneNumber: row.u_phone_number,
+      emailVerified: Boolean(row.u_email_verified),
+      provider: row.u_provider,
+      createdAt: row.u_created_at,
+      updatedAt: row.u_updated_at,
+    },
+  };
+}
+
+export function deactivateAllAuthSessions(db: BetterSqlite3.Database): void {
+  db.prepare(`UPDATE auth_sessions SET is_active = 0, access_token = NULL, refresh_token = NULL, id_token = NULL WHERE is_active = 1`).run();
+}
+
+/** Return all user profiles with an indicator whether they currently have an active session. */
+export function getAllUserProfiles(
+  db: BetterSqlite3.Database
+): (UserProfile & { hasActiveSession: boolean })[] {
+  const stmt = db.prepare(`
+    SELECT u.*,
+           CASE WHEN EXISTS (
+             SELECT 1 FROM auth_sessions s WHERE s.user_id = u.id AND s.is_active = 1
+           ) THEN 1 ELSE 0 END AS has_active_session
+    FROM user_profiles u
+    ORDER BY u.created_at ASC
+  `);
+  const rows = stmt.all() as any[];
+  return rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    phoneNumber: row.phone_number,
+    emailVerified: Boolean(row.email_verified),
+    provider: row.provider,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    hasActiveSession: Boolean(row.has_active_session),
+  }));
+}
+
+/** Switch the active auth session to the specified userId. */
+export function switchActiveAuthSession(
+  db: BetterSqlite3.Database,
+  userId: string
+): boolean {
+  const profile = getUserProfile(db, userId);
+  if (!profile) return false;
+
+  const deactivateStmt = db.prepare(`UPDATE auth_sessions SET is_active = 0 WHERE is_active = 1`);
+  deactivateStmt.run();
+
+  // Find most recent session for this user
+  const recentSession = db.prepare(
+    `SELECT id FROM auth_sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`
+  ).get(userId) as { id: string } | undefined;
+
+  const now = new Date().toISOString();
+  if (recentSession) {
+    db.prepare(`UPDATE auth_sessions SET is_active = 1, updated_at = ? WHERE id = ?`).run(
+      now,
+      recentSession.id
+    );
+  } else {
+    const id = 'sess_' + Date.now();
+    db.prepare(
+      `INSERT INTO auth_sessions (id, user_id, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`
+    ).run(id, userId, now, now);
+  }
+
+  return true;
 }
 
