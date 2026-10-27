@@ -69,6 +69,15 @@ PackageGuard implements a dual-interface architecture where both the Desktop GUI
 
 ---
 
+## 📥 Download Official Release
+
+Download the official Windows installer (`.exe`) directly from the GitHub Releases page:
+
+* **Official Releases**: [Package-Guard Releases](https://github.com/nsakthivel-dev/Package-Guard/releases)
+* **Latest Windows Installer**: [PackageGuard-Setup.exe (v1.0.0)](https://github.com/nsakthivel-dev/Package-Guard/releases/download/v1.0.0/PackageGuard-Setup.exe)
+
+---
+
 ## ⚡ Quick Start
 
 ### Prerequisites
@@ -81,8 +90,8 @@ PackageGuard implements a dual-interface architecture where both the Desktop GUI
 
 ```bash
 # Clone the repository
-git clone https://github.com/nsakthivel-dev/PackageGuard.git
-cd PackageGuard
+git clone https://github.com/nsakthivel-dev/Package-Guard.git
+cd Package-Guard
 
 # Install workspace dependencies
 pnpm install
@@ -273,19 +282,13 @@ PackageGuard stores runtime state cleanly under the user's roaming directory:
 
 ---
 
-## 🧪 Validation & Test Suites
+## 🧪 Quality & Validation
 
-The repository includes automated test suites for verifying CLI and IPC integrity:
+The repository enforces strict TypeScript static verification across all monorepo packages:
 
 ```bash
-# Run comprehensive 86-command autonomous CLI test suite
-node scripts/test-cli-suite.mjs
-
-# Run Electron & Named Pipe live integration test
-node scripts/test-electron-ipc.mjs
-
-# Run packaged production binaries end-to-end test
-node scripts/test-built-app.mjs
+# Run comprehensive TypeScript typecheck across all workspaces
+pnpm run typecheck
 ```
 
 ---

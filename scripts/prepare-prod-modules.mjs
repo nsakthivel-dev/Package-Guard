@@ -39,3 +39,4 @@ for (const pkg of ["better-sqlite3-electron", "better-sqlite3", "bindings", "fil
 }
 
 console.log("prod-modules prepared successfully at:", prodModulesDir);
+

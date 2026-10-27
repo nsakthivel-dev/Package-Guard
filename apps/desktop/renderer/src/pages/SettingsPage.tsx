@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { 
   Shield, 
   Clock,
@@ -9,7 +10,8 @@ import {
   Plus,
   X,
   Box,
-  FolderOpen
+  FolderOpen,
+  FileText
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -25,10 +27,12 @@ import {
 } from "@/components/ui/tooltip";
 
 export default function SettingsPage() {
+  const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const { data: settings } = useGetSettings();
   const updateSettings = useUpdateSettings();
   const [newIgnore, setNewIgnore] = useState("");
+
   const [systemInfo, setSystemInfo] = useState<{
     logicalCores: number;
     defaultConcurrency: number;
@@ -102,6 +106,7 @@ export default function SettingsPage() {
     const current = (settings as any).ignoredPackages || [];
     handleUpdate('ignoredPackages', current.filter((p: string) => p !== pkg));
   };
+
 
   if (!settings) return null;
 
@@ -418,6 +423,34 @@ export default function SettingsPage() {
           </div>
         </section>
 
+
+        {/* Privacy & Legal */}
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <FileText className="w-5 h-5" />
+            </div>
+            <h3 className="text-[19px] font-bold text-on-surface leading-snug">Privacy & Legal</h3>
+          </div>
+
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-[15px] font-bold text-on-surface">Privacy Policy</p>
+              <p className="text-[13px] text-on-surface-variant max-w-[540px]">
+                Read Package Guard's local-first privacy policy and data handling principles.
+              </p>
+            </div>
+            <Button 
+              type="button"
+              variant="outline"
+              onClick={() => setLocation("/privacy")}
+              className="rounded-xl border-outline-variant font-bold text-primary hover:bg-primary/10 hover:border-primary/40 shrink-0 cursor-pointer"
+            >
+              <FileText className="w-4 h-4 mr-2" /> View Privacy Policy
+            </Button>
+          </div>
+        </section>
+
         {/* About Footer */}
         <footer className="pt-8 flex flex-col items-center text-center space-y-3 border-t border-outline-variant">
           <div className="flex items-center gap-2 text-primary">
@@ -425,10 +458,18 @@ export default function SettingsPage() {
             <span className="text-[18px] font-bold">PackageGuard Audit Engine</span>
           </div>
           <p className="text-[12px] text-outline leading-relaxed">
-            Configuration Profile: Default v2.4.1<br/>
-            Engineered for Security Compliance<br/>
+            Configuration Profile: Default V1.0<br/>
             Powered by Lupus Venture
           </p>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => setLocation("/privacy")}
+              className="text-[12px] text-primary hover:underline font-medium cursor-pointer"
+            >
+              Privacy Policy
+            </button>
+          </div>
         </footer>
       </main>
     </div>

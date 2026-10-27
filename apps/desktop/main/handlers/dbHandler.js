@@ -26,9 +26,7 @@ const store = {
     autoScanVenvsOnStartup: false,
     includeVenvsInDashboard: true,
     securityLevel: 'Standard',
-    ignoredPackages: [],
-    googleClientId: process.env.GOOGLE_CLIENT_ID || '',
-    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || ''
+    ignoredPackages: []
   },
   history: [],
   snapshots: [],
@@ -77,12 +75,12 @@ function loadStorage() {
           theme: legacy.theme ?? 'dark',
           customScanPaths: typeof legacy.custom_scan_paths === 'string' ? JSON.parse(legacy.custom_scan_paths) : (legacy.customScanPaths ?? []),
           securityLevel: legacy.securityLevel ?? 'Standard',
-          ignoredPackages: Array.isArray(legacy.ignoredPackages) ? legacy.ignoredPackages : [],
-          googleClientId: legacy.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
-          googleClientSecret: legacy.googleClientSecret || process.env.GOOGLE_CLIENT_SECRET || ''
+          ignoredPackages: Array.isArray(legacy.ignoredPackages) ? legacy.ignoredPackages : []
         };
         
         // Remove legacy keys and separated permission keys
+        delete migrated.googleClientId;
+        delete migrated.googleClientSecret;
         delete migrated.safe_mode;
         delete migrated.cache_duration_hours;
         delete migrated.concurrency_limit;
@@ -285,6 +283,7 @@ module.exports = {
     const perm = installationState.getPermissionState();
     return {
       ...store.settings,
+      googleClientId: typeof store.settings.googleClientId === 'string' ? store.settings.googleClientId : '',
       backgroundPermission: perm.backgroundPermission,
       dontAskAgain: perm.dontAskAgain,
     };
@@ -299,6 +298,13 @@ module.exports = {
         backgroundPermission: actualSettings.backgroundPermission,
         dontAskAgain: actualSettings.dontAskAgain,
       });
+    }
+
+    if (typeof actualSettings.googleClientId === 'string') {
+      actualSettings.googleClientId = actualSettings.googleClientId.trim();
+    }
+    if (typeof actualSettings.googleClientSecret === 'string') {
+      actualSettings.googleClientSecret = actualSettings.googleClientSecret.trim();
     }
 
     const { backgroundPermission, dontAskAgain, ...persistableSettings } = actualSettings;

@@ -16,10 +16,8 @@ import Packages from "@/pages/Packages";
 import Snapshots from "@/pages/Snapshots";
 import History from "@/pages/History";
 import SettingsPage from "@/pages/SettingsPage";
-import LoginPage from "@/pages/LoginPage";
-import ProfilePage from "@/pages/ProfilePage";
+import PrivacyPolicyPage from "@/pages/PrivacyPolicyPage";
 import NotFound from "@/pages/not-found";
-import { useAuthStore } from "@/store/useAuthStore";
 
 function Router() {
   useEffect(() => {
@@ -28,9 +26,6 @@ function Router() {
     }
 
     const initStartup = async () => {
-      // Restore authenticated session if present
-      useAuthStore.getState().checkSession();
-
       // Gate automatic data loading and scanning on startup:
       // ONLY paint cached data and trigger scan if user has already granted permission.
       // If permission is undecided (null) or denied (false), DO NOT load packages or start scan!
@@ -145,8 +140,8 @@ function Router() {
         <Route path="/snapshots" component={Snapshots} />
         <Route path="/history" component={History} />
         <Route path="/settings" component={SettingsPage} />
-        <Route path="/profile" component={ProfilePage} />
-        <Route path="/login" component={LoginPage} />
+        <Route path="/settings/privacy" component={PrivacyPolicyPage} />
+        <Route path="/privacy" component={PrivacyPolicyPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

@@ -444,6 +444,68 @@ export default function Environments() {
     }
   };
 
+  // ── Remove Project State & Handlers ─────────────────────────────────────
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
+  const [removeTarget, setRemoveTarget]       = useState<ProjectEnvironment | null>(null);
+  const [isRemoving, setIsRemoving]           = useState(false);
+
+  const handleOpenRemove = (proj: ProjectEnvironment) => {
+    setRemoveTarget(proj);
+    setShowRemoveModal(true);
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!removeTarget || isRemoving) return;
+
+    setIsRemoving(true);
+    try {
+      const api = (window as any).electronAPI;
+      if (!api || !api.removeProject) {
+        throw new Error("Remove project functionality is not available in current environment");
+      }
+
+      const targetId = removeTarget._coreProjectId || removeTarget.projectId || removeTarget.id;
+      await api.removeProject(targetId);
+
+      // If removed project was selected, clear selection and reset Packages panel
+      if (
+        selectedProject &&
+        (selectedProject.id === removeTarget.id ||
+         selectedProject._coreProjectId === removeTarget._coreProjectId ||
+         selectedProject.name === removeTarget.name)
+      ) {
+        setSelectedProject(null);
+      }
+
+      // Invalidate queries so Environments page and summary counts update immediately
+      await refetchProjects();
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", "packages"] });
+      qc.invalidateQueries({ queryKey: ["history"] });
+      qc.invalidateQueries({ queryKey: ["/api/history"] });
+      qc.invalidateQueries({ queryKey: ["snapshots"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/status-breakdown"] });
+      qc.invalidateQueries({ queryKey: ["packages"] });
+
+      toast({
+        title: "Project Removed",
+        description: `Project "${removeTarget.name}" was removed from tracked environments. No files on disk were deleted.`,
+      });
+
+      setShowRemoveModal(false);
+      setRemoveTarget(null);
+    } catch (err: any) {
+      toast({
+        title: "Removal Failed",
+        description: err?.message || "Failed to remove project.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
   // ── Scan state ──────────────────────────────────────────────────────────
   const [scanningId,        setScanningId]        = useState<string | null>(null);
   const [scanningProjId,    setScanningProjId]    = useState<string | null>(null);
@@ -805,6 +867,16 @@ export default function Environments() {
                           >
                             <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
                             <span>Rename Project</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenRemove(proj);
+                            }}
+                            className="cursor-pointer flex items-center gap-2 text-[13px] text-destructive focus:text-destructive focus:bg-destructive/10"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            <span>Remove Project</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -1205,6 +1277,77 @@ export default function Environments() {
                 </Button>
               </>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Remove Project Confirmation Dialog ────────────────────────────── */}
+      <Dialog
+        open={showRemoveModal}
+        onOpenChange={(open: boolean) => {
+          if (!isRemoving) {
+            setShowRemoveModal(open);
+            if (!open) setRemoveTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="rounded-lg border-card-border bg-surface-container-lowest shadow-[0_20px_60px_rgba(0,0,0,0.15)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[16px] font-semibold text-on-surface">Remove Project</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            <div className="rounded-lg bg-surface-container-low p-3.5 border border-card-border space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Project Name</span>
+                <span className="text-[13px] font-semibold text-on-surface truncate max-w-[220px]" title={removeTarget?.name}>
+                  {removeTarget?.name}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Path</span>
+                <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[240px]" title={removeTarget?.path}>
+                  {removeTarget?.path}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-lg bg-destructive/5 border border-destructive/20 space-y-2">
+              <p className="text-[13px] text-on-surface leading-relaxed">
+                Are you sure you want to remove &ldquo;<span className="font-semibold text-destructive">{removeTarget?.name}</span>&rdquo; from Package Guard?
+              </p>
+              <p className="text-[12px] text-muted-foreground leading-relaxed">
+                This will remove the project from Package Guard&rsquo;s tracked environments. <span className="font-semibold text-on-surface">Your actual project directory, source code, and local files will NOT be deleted or modified.</span>
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-3">
+            <Button
+              variant="outline"
+              disabled={isRemoving}
+              onClick={() => {
+                setShowRemoveModal(false);
+                setRemoveTarget(null);
+              }}
+              className="h-10 rounded-md px-4 text-[13px] font-medium"
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={isRemoving}
+              onClick={handleConfirmRemove}
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground h-10 px-5 rounded-md text-[13px] font-medium flex items-center gap-2 cursor-pointer"
+            >
+              {isRemoving ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Removing...</span>
+                </>
+              ) : (
+                <span>Remove Project</span>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

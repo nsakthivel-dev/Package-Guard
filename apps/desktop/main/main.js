@@ -26,8 +26,18 @@ if (!gotTheLock) {
       path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'PackageGuard', '.env'),
       path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Package Guard', '.env'),
       path.join(os.homedir(), '.packageguard', '.env'),
-      path.join(app.getPath('userData'), '.env')
     ];
+    try {
+      if (app && typeof app.getPath === 'function') {
+        candidatePaths.push(path.join(app.getPath('userData'), '.env'));
+      }
+    } catch {}
+    if (process.resourcesPath) {
+      candidatePaths.push(path.join(process.resourcesPath, '.env'));
+    }
+    if (process.execPath) {
+      candidatePaths.push(path.join(path.dirname(process.execPath), '.env'));
+    }
     for (const p of candidatePaths) {
       try {
         if (fs.existsSync(p)) {
@@ -137,7 +147,6 @@ if (!gotTheLock) {
   const venvHandler = require('./handlers/venvHandler');
   const cliInstaller = require('./handlers/cliInstaller');
   const projectEnvHandler = require('./handlers/projectEnvironmentHandler');
-  const authHandler = require('./handlers/authHandler');
   const { PipeServer } = require('./pipe-server');
   const { openDatabase } = require('@package-guard/shared/db');
   const {
@@ -667,12 +676,6 @@ app.whenReady().then(async () => {
   // Wire project environment handler to SQLite db and core engine getter
   if (typeof projectEnvHandler.setDb === 'function') {
     projectEnvHandler.setDb(() => sqliteDb);
-  }
-  if (typeof authHandler.setDb === 'function') {
-    authHandler.setDb(() => sqliteDb);
-  }
-  if (typeof authHandler.setMainWindow === 'function' && mainWindow) {
-    authHandler.setMainWindow(mainWindow);
   }
   projectEnvHandler.setGetCore(getCore);
 
@@ -1904,191 +1907,6 @@ ipcMain.handle('system:info', () => {
   };
 });
 
-// Authentication & User Profile
-ipcMain.handle('auth:get-session', async () => {
-  return authHandler.getSession();
-});
-
-ipcMain.handle('auth:get-accounts', async () => {
-  return authHandler.getAllAccounts();
-});
-
-ipcMain.handle('auth:switch-account', async (_evt, userId) => {
-  return authHandler.switchAccount(userId);
-});
-
-ipcMain.handle('auth:login-google', async (_evt, options = {}) => {
-  return authHandler.loginWithGoogle(options, dbHandler);
-});
-
-ipcMain.handle('auth:update-profile', async (_evt, data) => {
-  return authHandler.updateProfile(data, dbHandler);
-});
-
-ipcMain.handle('profile:select-photo', async () => {
-  return authHandler.selectProfilePhoto(mainWindow);
-});
-
-ipcMain.handle('profile:save-photo', async (_evt, { userId, filePath, dataUrl, ext } = {}) => {
-  return authHandler.saveProfilePhoto(userId, { filePath, dataUrl, ext }, dbHandler);
-});
-
-ipcMain.handle('profile:remove-photo', async (_evt, userId) => {
-  return authHandler.removeProfilePhoto(userId, dbHandler);
-});
-
-ipcMain.handle('auth:logout', async () => {
-  return authHandler.logout();
-});
-
-ipcMain.handle('auth:signout', async () => {
-  try {
-    // 1. Clear default session cookies, cache, and storage
-    if (session && session.defaultSession) {
-      await session.defaultSession.clearStorageData({
-        storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage']
-      });
-    }
-  } catch (err) {
-    log.warn('auth', `Error clearing Chromium session storage: ${err.message}`);
-  }
-
-  // 2. Clear credentials from SQLite / secure storage
-  if (typeof dbHandler.clearAuthTokens === 'function') {
-    dbHandler.clearAuthTokens();
-  }
-  if (typeof authHandler.clearAuthTokens === 'function') {
-    await authHandler.clearAuthTokens();
-  } else if (typeof authHandler.logout === 'function') {
-    await authHandler.logout();
-  }
-
-  return { success: true };
-});
-
-ipcMain.handle('session:clear-all', async () => {
-  try {
-    if (session && session.defaultSession) {
-      await session.defaultSession.clearStorageData({
-        storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage']
-      });
-    }
-  } catch (err) {
-    log.warn('auth', `Error clearing Chromium session storage: ${err.message}`);
-  }
-
-  if (typeof dbHandler.clearAuthTokens === 'function') {
-    dbHandler.clearAuthTokens();
-  }
-  if (typeof authHandler.clearAuthTokens === 'function') {
-    await authHandler.clearAuthTokens();
-  } else if (typeof authHandler.logout === 'function') {
-    await authHandler.logout();
-  }
-
-  return { success: true };
-});
-
-ipcMain.handle('auth:delete-account', async (_evt, { userId, confirmation } = {}) => {
-  return authHandler.deleteAccount(userId, confirmation);
-});
-
-ipcMain.handle('auth:get-config', async () => {
-  return authHandler.getAuthConfig(dbHandler);
-});
-
-ipcMain.handle('auth:set-config', async (_evt, config) => {
-  return authHandler.saveAuthConfig(dbHandler, config);
-});
-
-// Profile Storage Location
-function validateDirectoryWritable(dirPath) {
-  try {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-    }
-    fs.accessSync(dirPath, fs.constants.R_OK | fs.constants.W_OK);
-    const testFile = path.join(dirPath, `.pg_perm_test_${Date.now()}`);
-    fs.writeFileSync(testFile, 'test', 'utf8');
-    fs.unlinkSync(testFile);
-    return { ok: true, isWritable: true };
-  } catch (err) {
-    return { ok: false, isWritable: false, error: err.message || 'Directory is not writable' };
-  }
-}
-
-ipcMain.handle('profile:get-storage-path', async () => {
-  const settings = dbHandler.getSettings() || {};
-  const defaultPath = path.join(rp.dataRoot, 'profiles');
-  const currentPath = settings.profileStoragePath || defaultPath;
-  try {
-    if (!fs.existsSync(currentPath)) {
-      fs.mkdirSync(currentPath, { recursive: true });
-    }
-  } catch { /* ignore */ }
-  const validation = validateDirectoryWritable(currentPath);
-  return {
-    currentPath,
-    defaultPath,
-    isDefault: currentPath === defaultPath,
-    isWritable: validation.isWritable,
-    error: validation.error || null,
-    systemPaths: {
-      dataRoot: rp.dataRoot,
-      database: rp.paths.dbFile,
-      snapshots: rp.paths.snapshots,
-      config: rp.paths.config,
-      logs: rp.paths.logs,
-    }
-  };
-});
-
-ipcMain.handle('profile:select-storage-dir', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Select Profile Storage Directory',
-    properties: ['openDirectory', 'createDirectory'],
-    buttonLabel: 'Select Folder',
-  });
-  if (result.canceled || !result.filePaths || !result.filePaths.length) {
-    return null;
-  }
-  const selectedPath = result.filePaths[0];
-  try {
-    pathGuard.assertSafeWritePath(selectedPath);
-  } catch (err) {
-    return {
-      path: selectedPath,
-      isWritable: false,
-      error: err.message,
-    };
-  }
-  const validation = validateDirectoryWritable(selectedPath);
-  return {
-    path: selectedPath,
-    isWritable: validation.isWritable,
-    error: validation.error || null,
-  };
-});
-
-ipcMain.handle('profile:set-storage-path', async (_evt, newPath) => {
-  if (typeof newPath !== 'string' || !newPath.trim()) {
-    return { ok: false, error: 'Invalid directory path provided.' };
-  }
-  const cleanPath = path.normalize(newPath.trim());
-  const targetDir = path.resolve(cleanPath);
-  try {
-    pathGuard.assertSafeWritePath(targetDir);
-  } catch (err) {
-    return { ok: false, error: `Invalid storage path: ${err.message}` };
-  }
-  const validation = validateDirectoryWritable(targetDir);
-  if (!validation.isWritable) {
-    return { ok: false, error: `Directory is not accessible or writable: ${validation.error}` };
-  }
-  dbHandler.updateSettings({ profileStoragePath: targetDir });
-  return { ok: true, path: targetDir };
-});
-
 // Snapshots
 ipcMain.handle('snapshots:get', async () => {
   try {
@@ -2740,6 +2558,23 @@ ipcMain.handle('projects:rename', async (_, { projectId, newName } = {}) => {
     return result;
   } catch (e) {
     log.error('ipc', `projects:rename error: ${e.message}`);
+    throw e;
+  }
+});
+
+/**
+ * Remove a project environment from tracking.
+ */
+ipcMain.handle('projects:remove', async (_, { projectId } = {}) => {
+  try {
+    const result = await projectEnvHandler.removeProjectEnvironment(projectId);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('projects:updated', { projectId: result.projectId, removed: true });
+      mainWindow.webContents.send('core:data-changed', { source: 'remove', projectId: result.projectId });
+    }
+    return result;
+  } catch (e) {
+    log.error('ipc', `projects:remove error: ${e.message}`);
     throw e;
   }
 });

@@ -880,6 +880,83 @@ async function renameProjectEnvironment(projectId, newName) {
   };
 }
 
+/**
+ * Remove a project environment from tracking in Package Guard.
+ *
+ * SAFETY GUARANTEE:
+ * This removes ONLY Package Guard tracking records from SQLite and local GUI state.
+ * It NEVER deletes, moves, or modifies the actual project directory, source code,
+ * virtual environments, dependencies, lockfiles, or files on disk.
+ *
+ * @param {string} projectId  e.g. "proj-123" or "proj-env-proj-123"
+ * @returns {Promise<{ success: boolean; projectId: string; projectName: string; alreadyRemoved?: boolean }>}
+ */
+async function removeProjectEnvironment(projectId) {
+  if (!projectId) {
+    throw new Error('Project ID is required.');
+  }
+
+  const rawId = String(projectId).replace(/^proj-env-/, '');
+  const db = getDb();
+  if (!db) {
+    throw new Error('Database is unavailable');
+  }
+
+  const {
+    getProjectById,
+    deleteProjectTracking,
+    insertHistory,
+  } = require('@package-guard/shared/repository');
+
+  // Look up project by stable identifier (rawId or full projectId)
+  let project = getProjectById(db, rawId);
+  if (!project && rawId !== projectId) {
+    project = getProjectById(db, projectId);
+  }
+
+  const projectName = project ? project.name : rawId;
+  const targetId = project ? project.id : rawId;
+
+  // 1. Remove tracked database records (projects, scans, snapshots, snapshot_files, history)
+  let deleted = false;
+  try {
+    deleted = deleteProjectTracking(db, targetId);
+  } catch (err) {
+    console.warn(`[ProjectEnvHandler] deleteProjectTracking notice: ${err.message}`);
+  }
+
+  // 2. Also remove from local dbHandler store (GUI environment & packages cache) if present
+  try {
+    const dbHandler = require('./dbHandler');
+    if (dbHandler && typeof dbHandler.deleteEnvironment === 'function') {
+      dbHandler.deleteEnvironment(targetId);
+      dbHandler.deleteEnvironment(projectId);
+      dbHandler.deleteEnvironment(`proj-env-${targetId}`);
+    }
+  } catch (err) {
+    console.warn('[ProjectEnvHandler] Could not clean dbHandler environment:', err.message);
+  }
+
+  // 3. Record general history entry if database is alive
+  try {
+    insertHistory(db, {
+      projectId: null,
+      eventType: 'DELETE',
+      description: `Project "${projectName}" was removed from tracking.`,
+      detailsJson: JSON.stringify({ projectId: targetId, projectName, action: 'remove_tracking' }),
+    });
+  } catch (err) {
+    console.warn('[ProjectEnvHandler] Could not record removal history:', err.message);
+  }
+
+  return {
+    success: true,
+    projectId: targetId,
+    projectName,
+    alreadyRemoved: !deleted && !project,
+  };
+}
+
 module.exports = {
   setDb,
   getDb,
@@ -890,6 +967,7 @@ module.exports = {
   getProjectSnapshots,
   scanProjectEnvironment,
   renameProjectEnvironment,
+  removeProjectEnvironment,
   enrichGlobalSystems,
   classifyProject,
   detectVenvDir,
