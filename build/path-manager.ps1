@@ -20,7 +20,7 @@ $dirNormalized = $Dir.TrimEnd('\')
 if ($Action -eq "install") {
     $parts = $currentPath.Split(';') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
     $filtered = $parts | Where-Object { -not $_.TrimEnd('\').Equals($dirNormalized, [System.StringComparison]::OrdinalIgnoreCase) }
-    # Prepend to ensure Package Guard CLI has top priority over legacy shims
+    # Prepend to ensure Package Guardian CLI has top priority over legacy shims
     $newPath = (@($dirNormalized) + $filtered) -join ';'
     [Environment]::SetEnvironmentVariable("Path", $newPath, $target)
     Write-Output "Configured $dirNormalized at front of PATH"

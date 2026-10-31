@@ -1,7 +1,7 @@
 <#
 ─────────────────────────────────────────────────────────────────────────────
 create-share-zip.ps1
-Package Guard — Clean Project Share Zip Generator
+Package Guardian — Clean Project Share Zip Generator
 
 Creates a clean, lightweight, shareable zip of the Package Guard codebase.
 Excludes:
@@ -37,7 +37,7 @@ param(
 )
 
 $projectRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
-$projectName = "PackageGuard"
+$projectName = "PackageGuardian"
 $timestamp   = Get-Date -Format "yyyy-MM-dd_HH-mm"
 
 # Determine target zip file path
@@ -50,7 +50,7 @@ if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
 
 Write-Host ""
 Write-Host "  =================================================" -ForegroundColor Cyan
-Write-Host "         Package Guard - Share Zip Creator         " -ForegroundColor Cyan
+Write-Host "         Package Guardian - Share Zip Creator      " -ForegroundColor Cyan
 Write-Host "  =================================================" -ForegroundColor DarkGray
 Write-Host "  Source   : $projectRoot" -ForegroundColor Gray
 Write-Host "  Target   : $outputZip" -ForegroundColor Gray
@@ -91,6 +91,7 @@ $rootOnlyExcludeDirs = [System.Collections.Generic.HashSet[string]]::new([System
     "release-latest",
     "dist_electron",
     "database",
+    ".packageguardian",
     ".packageguard"
 ) | ForEach-Object { [void]$rootOnlyExcludeDirs.Add($_) }
 

@@ -3,6 +3,26 @@
 const fs = require('fs');
 const path = require('path');
 
+// Load environment variables from .env if present
+try {
+  const envPath = path.resolve(__dirname, '..', '.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    for (const line of envContent.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim();
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  }
+} catch (_) {}
+
 const iconIco = path.resolve(__dirname, 'icon.ico');
 const iconIcns = path.resolve(__dirname, 'icon.icns');
 const iconPng = path.resolve(__dirname, 'icon.png');
@@ -48,19 +68,19 @@ const iconPng = path.resolve(__dirname, 'icon.png');
  */
 module.exports = {
   // ── Identity ───────────────────────────────────────────────────────────────
-  appId:       'com.lupusventure.packageguard',
-  productName: 'Package Guard',
-  copyright:   `Copyright © ${new Date().getFullYear()} Lupus Venture`,
+  appId: 'com.lupusventure.packageguardian',
+  productName: 'Package Guardian',
+  copyright: `Copyright © ${new Date().getFullYear()} Lupus Venture`,
 
   // ── Output ─────────────────────────────────────────────────────────────────
   directories: {
-    output:         'release',
+    output: 'release',
     buildResources: 'build',
   },
 
   // ── Node Module / Native Addon Behaviour ───────────────────────────────────
   // Use hoisted node_modules directly (matches .npmrc node-linker=hoisted)
-  npmRebuild:     false,
+  npmRebuild: false,
   nodeGypRebuild: false,
 
   // ── Files packed into the asar (application code only) ────────────────────
@@ -163,59 +183,117 @@ module.exports = {
     target: [
       {
         target: 'nsis',
-        arch:   ['x64'],
+        arch: ['x64'],
       },
     ],
-    // Canonical executable filename — must be PackageGuard.exe
-    executableName: 'PackageGuard',
-    artifactName:   'PackageGuard-Setup.${ext}',
+    // Canonical executable filename — must be PackageGuardian.exe
+    executableName: 'PackageGuardian',
+    artifactName: 'PackageGuardian-Setup.${ext}',
 
     // Application icon (uses build/icon.ico if present, else fallback)
     icon: fs.existsSync(iconIco) ? 'build/icon.ico' : undefined,
 
     // Code signing configuration for local / CI builds
-    forceCodeSigning:          false,
-    signAndEditExecutable:     true,
+    forceCodeSigning: false,
+    signAndEditExecutable: true,
     verifyUpdateCodeSignature: false,
 
     // Execution level for installer and application
-    requestedExecutionLevel:   'asInvoker',
+    requestedExecutionLevel: 'asInvoker',
   },
 
   // ── NSIS Installer ─────────────────────────────────────────────────────────
   nsis: {
     // Show standard wizard
-    oneClick:                           false,
-    perMachine:                         false,
+    oneClick: false,
+    perMachine: false,
     allowToChangeInstallationDirectory: true,
-    artifactName:                       'PackageGuard-Setup.${ext}',
-    uninstallDisplayName:               'Package Guard',
+    artifactName: 'PackageGuardian-Setup.${ext}',
+    uninstallDisplayName: 'Package Guardian',
 
-    installerIcon:                      'build/icon.ico',
-    uninstallerIcon:                    'build/icon.ico',
-    installerHeaderIcon:                'build/icon.ico',
+    installerIcon: 'build/icon.ico',
+    uninstallerIcon: 'build/icon.ico',
+    installerHeaderIcon: 'build/icon.ico',
 
     // Shortcuts
-    createDesktopShortcut:              true,
-    createStartMenuShortcut:            true,
-    shortcutName:                       'Package Guard',
-    menuCategory:                       'Package Guard',
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    shortcutName: 'Package Guardian',
+    menuCategory: 'Package Guardian',
 
-    // User data is managed cleanly
-    deleteAppDataOnUninstall:           true,
+    // User data is managed cleanly and safely preserved
+    deleteAppDataOnUninstall: false,
 
     // Custom helper macro for PATH CLI shim registration
-    include:                            'build/installer.nsh',
-    license:                            null,
+    include: 'build/installer.nsh',
+    license: null,
+  },
+
+  // ── MSI Installer (Windows Installer / Microsoft Store Win32) ──────────────
+  msi: {
+    artifactName: 'PackageGuardian-${version}-${arch}.msi',
+    oneClick: false,
+    perMachine: false,
+    runAfterFinish: false,
+
+    // Shortcuts
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    shortcutName: 'Package Guardian',
+
+    // Warnings
+    warningsAsErrors: false,
+  },
+
+  // ── AppX / MSIX Package (Microsoft Store Distribution) ──────────────────────
+  appx: {
+    // Package Identity Name: Must match "Package/Identity/Name" from Microsoft Partner Center
+    // Can be supplied via MS_STORE_IDENTITY_NAME environment variable
+    identityName: process.env.MS_STORE_IDENTITY_NAME || 'LupusVenture.PackageGuardian',
+
+    // Publisher ID: Must match "Package/Identity/Publisher" from Partner Center (CN=XXXXXXXX-XXXX-...)
+    // Can be supplied via MS_STORE_PUBLISHER environment variable
+    publisher: process.env.MS_STORE_PUBLISHER || 'CN=9D430837-63E0-4ADA-BC68-BF28D9A2CF4E',
+
+    // Publisher Display Name: Must match "Publisher display name" in Partner Center
+    publisherDisplayName: process.env.MS_STORE_PUBLISHER_DISPLAY_NAME || 'Lupus Venture',
+
+    // Application ID: Identifies the executable entrypoint inside the AppxManifest (ASCII alphanumeric)
+    applicationId: 'PackageGuardian',
+
+    // Friendly display name shown in Start Menu and Microsoft Store
+    displayName: 'Package Guardian',
+
+    // Tile background color matching the application theme
+    backgroundColor: '#0f172a',
+
+    // Target Architecture and Output Artifact Name (.msix)
+    artifactName: 'PackageGuardian-${version}-${arch}.msix',
+
+    // Supported Languages
+    languages: ['en-US'],
+
+    // Required Windows Desktop Bridge Capabilities
+    // 'runFullTrust' allows Centennial/Desktop Bridge apps full Win32 API execution
+    capabilities: [
+      'runFullTrust',
+    ],
+
+    // Minimum Windows OS version supporting MSIX packages (Windows 10 1809 / Build 17763)
+    minVersion: '10.0.17763.0',
+    maxVersionTested: '10.0.22621.0',
+
+    showNameOnTiles: false,
+    setBuildNumber: false,
   },
 
   // ══════════════════════════════════════════════════════════════════════════
   // macOS
   // ══════════════════════════════════════════════════════════════════════════
   mac: {
-    target:           [{ target: 'dmg', arch: ['x64', 'arm64'] }],
-    category:         'public.app-category.developer-tools',
-    icon:             fs.existsSync(iconIcns) ? 'build/icon.icns' : undefined,
+    target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
+    category: 'public.app-category.developer-tools',
+    icon: fs.existsSync(iconIcns) ? 'build/icon.icns' : undefined,
     forceCodeSigning: false,
   },
 
@@ -230,8 +308,8 @@ module.exports = {
   // Linux
   // ══════════════════════════════════════════════════════════════════════════
   linux: {
-    target:   [{ target: 'AppImage', arch: ['x64'] }],
+    target: [{ target: 'AppImage', arch: ['x64'] }],
     category: 'Development',
-    icon:     fs.existsSync(iconPng) ? 'build/icon.png' : undefined,
+    icon: fs.existsSync(iconPng) ? 'build/icon.png' : undefined,
   },
 };

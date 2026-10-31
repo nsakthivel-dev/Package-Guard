@@ -119,6 +119,9 @@ async function refreshPackages(
       latestVersion: p.latestVersion,
       status: p.status,
       groupName: p.groupName,
+      summary: (p as any).summary || null,
+      description: p.description || null,
+      homepageUrl: (p as any).homepageUrl || null,
     }))
   );
 

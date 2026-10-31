@@ -221,7 +221,7 @@ export async function initProject(
       };
       dbCreateSnapshot(initialSnapshot);
     } catch (e: any) {
-      console.warn(`[package-guard] Could not create initial snapshot: ${e?.message ?? String(e)}`);
+      console.warn(`[package-guardian] Could not create initial snapshot: ${e?.message ?? String(e)}`);
     }
   }
 
@@ -319,7 +319,7 @@ export async function removeProject(
 // High-Level Core Services for CLI and Desktop
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface InitPackageGuardResult {
+export interface InitPackageGuardianResult {
   ok: boolean;
   directoriesCreated: string[];
   databaseReady: boolean;
@@ -328,7 +328,9 @@ export interface InitPackageGuardResult {
   message: string;
 }
 
-export async function initPackageGuard(): Promise<InitPackageGuardResult> {
+export type InitPackageGuardResult = InitPackageGuardianResult;
+
+export async function initPackageGuardian(): Promise<InitPackageGuardianResult> {
   // 1. Ensure required user data directories: database, snapshots, logs, temp
   const { created: directoriesCreated, failed } = ensureUserDataDirs();
   if (failed.length > 0) {
@@ -358,9 +360,11 @@ export async function initPackageGuard(): Promise<InitPackageGuardResult> {
     databaseReady: true,
     configReady,
     environmentReady,
-    message: 'Package Guard initialized',
+    message: 'Package Guardian initialized',
   };
 }
+
+export const initPackageGuard = initPackageGuardian;
 
 export interface ScanCoreResult {
   project: Project;
@@ -776,11 +780,21 @@ export async function isElectronRunning(): Promise<boolean> {
   // 2. Check named pipe / socket
   const socketOk = await new Promise<boolean>((resolve) => {
     if (process.platform === 'win32') {
-      const socket = net.createConnection('\\\\.\\pipe\\package-guard-notify', () => {
+      const socket = net.createConnection(getNotifySocketPath(), () => {
         socket.destroy();
         resolve(true);
       });
-      socket.on('error', () => resolve(false));
+      socket.on('error', () => {
+        const legacySocket = net.createConnection('\\\\.\\pipe\\package-guard-notify', () => {
+          legacySocket.destroy();
+          resolve(true);
+        });
+        legacySocket.on('error', () => resolve(false));
+        legacySocket.setTimeout(250, () => {
+          legacySocket.destroy();
+          resolve(false);
+        });
+      });
       socket.setTimeout(250, () => {
         socket.destroy();
         resolve(false);
@@ -916,7 +930,7 @@ export async function runDoctorCore(): Promise<DoctorReport> {
     message: `Node.js v${process.versions.node}`,
   });
 
-  // 2. Package Guard directories (auto-repairs missing)
+  // 2. Package Guardian directories (auto-repairs missing)
   const { created: dirsCreated, failed: dirFails } = ensureUserDataDirs();
   if (dirsCreated.length > 0) {
     repairs.push(`Created missing directories: ${dirsCreated.join(', ')}`);

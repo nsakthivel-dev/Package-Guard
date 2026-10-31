@@ -179,6 +179,7 @@ loadStorage();
 
 module.exports = {
   saveStorage,
+  normalizePackageName,
   // Environments
   getEnvironments: () => store.environments,
   getEnvironment: (id) => store.environments.find(e => e.id === id),
@@ -247,16 +248,28 @@ module.exports = {
       p.ecosystem === pkg.ecosystem
     );
     
+    const existingPkg = index >= 0 ? store.packages[index] : null;
     const updatedPkg = { 
+      ...(existingPkg || {}),
       ...pkg, 
       environmentId: envId, 
       lastChecked, 
-      id: index >= 0 ? store.packages[index].id : Date.now() + Math.random() 
+      id: existingPkg ? existingPkg.id : (Date.now() + Math.random()) 
     };
     
+    // Do not overwrite existing valid metadata with null/empty
+    if (!pkg.description && existingPkg?.description) {
+      updatedPkg.description = existingPkg.description;
+    }
+    if (!pkg.summary && existingPkg?.summary) {
+      updatedPkg.summary = existingPkg.summary;
+    }
+    if (!pkg.homepageUrl && existingPkg?.homepageUrl) {
+      updatedPkg.homepageUrl = existingPkg.homepageUrl;
+    }
+
     if (index >= 0) {
-      // Merge: preserve fields that are missing in the new object (like environmentName)
-      store.packages[index] = { ...store.packages[index], ...updatedPkg };
+      store.packages[index] = updatedPkg;
     } else {
       store.packages.push(updatedPkg);
     }
@@ -391,22 +404,28 @@ module.exports = {
     const lastChecked = Date.now();
     for (const p of packages) {
       const envId = resolveEnvId(p.environmentId || p.envId || p.env_id, p.ecosystem);
+      const normName = normalizePackageName(p.name, p.ecosystem);
 
       const index = store.packages.findIndex(existing => 
-        (existing.name === p.name && existing.ecosystem === p.ecosystem) && 
+        (normalizePackageName(existing.name, existing.ecosystem) === normName && existing.ecosystem === p.ecosystem) && 
         (existing.environmentId === envId || existing.envId === envId || existing.env_id === envId)
       );
       
+      const existingPkg = index >= 0 ? store.packages[index] : null;
       const updatedPkg = {
+        ...(existingPkg || {}),
         name: p.name,
         ecosystem: p.ecosystem,
         environmentId: envId,
         installedVersion: p.installedVersion,
-        latestVersion: p.latestVersion,
-        status: p.status,
-        groupName: p.groupName,
+        latestVersion: p.latestVersion !== undefined ? p.latestVersion : (existingPkg?.latestVersion || null),
+        status: p.status !== undefined ? p.status : (existingPkg?.status || 'unknown'),
+        groupName: p.groupName !== undefined ? p.groupName : (existingPkg?.groupName || null),
+        description: p.description || existingPkg?.description || null,
+        summary: p.summary || existingPkg?.summary || null,
+        homepageUrl: p.homepageUrl || existingPkg?.homepageUrl || null,
         lastChecked,
-        id: index >= 0 ? store.packages[index].id : Date.now() + Math.random()
+        id: existingPkg ? existingPkg.id : Date.now() + Math.random()
       };
 
       if (index >= 0) {

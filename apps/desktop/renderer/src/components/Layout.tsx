@@ -117,11 +117,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link href="/" className="flex items-center gap-3 cursor-pointer group">
             <img
               src="./logo.png"
-              alt="PackageGuard"
+              alt="Package Guardian"
               className="w-8 h-8 rounded-lg object-contain shrink-0 transition-transform group-hover:scale-105"
             />
             <div className="flex flex-col">
-              <span className="text-[15px] font-semibold text-white leading-tight">PackageGuard</span>
+              <span className="text-[15px] font-semibold text-white leading-tight">Package Guardian</span>
             </div>
           </Link>
         </div>

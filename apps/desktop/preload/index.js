@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Packages
   getPackages: (params) => ipcRenderer.invoke('packages:get', params),
   checkVersions: (packages) => ipcRenderer.invoke('versions:check', packages),
+  getPackageMetadata: (name, ecosystem) => ipcRenderer.invoke('packages:getMetadata', { name, ecosystem }),
+  getBatchMetadata: (items) => ipcRenderer.invoke('packages:batchGetMetadata', items),
   updatePackage: (data) => ipcRenderer.invoke('update:package', data),
   updateBatch: (data) => ipcRenderer.invoke('update:batch', data),
   deletePackage: (data) => ipcRenderer.invoke('packages:delete', data),

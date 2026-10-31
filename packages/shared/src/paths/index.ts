@@ -1,15 +1,15 @@
 /**
  * @packageguard/shared — Paths Module
  *
- * SINGLE AUTHORITATIVE SOURCE OF TRUTH for all filesystem paths used by PackageGuard.
+ * SINGLE AUTHORITATIVE SOURCE OF TRUTH for all filesystem paths used by Package Guardian.
  * Imported by: CLI (`apps/cli`), Core Engine (`packages/core`), Database (`packages/database`),
  * and Electron Main Process (`apps/desktop/main`).
  *
- * TARGET DIRECTORY STRUCTURE (Section 3 & 4):
- * %APPDATA%\PackageGuard
+ * TARGET DIRECTORY STRUCTURE:
+ * %APPDATA%\PackageGuardian
  * │
  * ├── data
- * │   └── packageguard.db
+ * │   └── package_guardian.db
  * │
  * ├── snapshots
  * │
@@ -32,8 +32,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { assertSafeWritePath } from './path-validator.js';
 
-export const APP_NAME = 'PackageGuard' as const;
-export const LEGACY_APP_NAME = 'Package Guard' as const;
+export const APP_NAME = 'PackageGuardian' as const;
+export const LEGACY_APP_NAMES = ['PackageGuard', 'Package Guard', 'package-guard'] as const;
+export const LEGACY_APP_NAME = 'PackageGuard' as const;
 
 let _dataRootOverride: string | null = null;
 let _migratedLegacy = false;
@@ -65,64 +66,112 @@ export function getAppDataBase(): string {
 }
 
 /**
- * Migrates legacy data from `%APPDATA%\Package Guard` to `%APPDATA%\PackageGuard`
- * safely and non-destructively on first access.
+ * Migrates legacy data from previous Package Guard locations
+ * (`%APPDATA%\PackageGuard`, `%APPDATA%\Package Guard`, `%LOCALAPPDATA%\Package Guard`)
+ * to `%APPDATA%\PackageGuardian` safely and non-destructively on first access.
  */
 function migrateLegacyDataIfNeeded(targetRoot: string): void {
   if (_migratedLegacy) return;
   _migratedLegacy = true;
 
   try {
-    const legacyRoot = path.join(getAppDataBase(), LEGACY_APP_NAME);
-    if (!fs.existsSync(legacyRoot) || legacyRoot === targetRoot) {
-      return;
-    }
+    const baseAppData = getAppDataBase();
+    const localAppData = process.env['LOCALAPPDATA'] || (process.platform === 'win32' ? path.join(os.homedir(), 'AppData', 'Local') : '');
 
-    // 1. Migrate database file
+    const candidateLegacyRoots = [
+      path.join(baseAppData, 'PackageGuard'),
+      path.join(baseAppData, 'Package Guard'),
+      path.join(baseAppData, 'package-guard'),
+      ...(localAppData ? [
+        path.join(localAppData, 'Package Guard'),
+        path.join(localAppData, 'PackageGuard'),
+        path.join(localAppData, 'package-guard'),
+      ] : [])
+    ];
+
     const targetDataDir = path.join(targetRoot, 'data');
-    const targetDbPath = path.join(targetDataDir, 'packageguard.db');
-    if (!fs.existsSync(targetDbPath)) {
-      const candidates = [
-        path.join(legacyRoot, 'database', 'db.json'),
-        path.join(legacyRoot, 'data', 'packageguard.db'),
-        path.join(legacyRoot, 'database', 'app_storage.json'),
-      ];
-      for (const oldFile of candidates) {
-        if (fs.existsSync(oldFile)) {
-          fs.mkdirSync(targetDataDir, { recursive: true });
-          fs.copyFileSync(oldFile, targetDbPath);
-          try { fs.renameSync(oldFile, `${oldFile}.migrated`); } catch { /* ignore */ }
-          break;
-        }
-      }
-    }
-
-    // 2. Migrate snapshots
-    const legacySnaps = path.join(legacyRoot, 'snapshots');
+    const targetDbPath = path.join(targetDataDir, 'package_guardian.db');
     const targetSnaps = path.join(targetRoot, 'snapshots');
-    if (fs.existsSync(legacySnaps) && fs.existsSync(targetSnaps)) {
-      const files = fs.readdirSync(legacySnaps);
-      for (const file of files) {
-        if (file.endsWith('.migrated')) continue;
-        const src = path.join(legacySnaps, file);
-        const dst = path.join(targetSnaps, file);
-        if (!fs.existsSync(dst) && fs.statSync(src).isFile()) {
-          try {
-            fs.copyFileSync(src, dst);
-            fs.renameSync(src, `${src}.migrated`);
-          } catch { /* ignore */ }
-        }
-      }
-    }
-
-    // 3. Migrate config
-    const legacyConfig = path.join(legacyRoot, 'config.json');
     const targetConfigDir = path.join(targetRoot, 'config');
     const targetConfig = path.join(targetConfigDir, 'settings.json');
-    if (fs.existsSync(legacyConfig) && !fs.existsSync(targetConfig)) {
-      fs.mkdirSync(targetConfigDir, { recursive: true });
-      fs.copyFileSync(legacyConfig, targetConfig);
-      try { fs.renameSync(legacyConfig, `${legacyConfig}.migrated`); } catch { /* ignore */ }
+
+    for (const legacyRoot of candidateLegacyRoots) {
+      if (!fs.existsSync(legacyRoot) || legacyRoot === targetRoot) {
+        continue;
+      }
+
+      // 1. Migrate database file
+      if (!fs.existsSync(targetDbPath)) {
+        const candidates = [
+          path.join(legacyRoot, 'data', 'package_guardian.db'),
+          path.join(legacyRoot, 'data', 'packageguard.db'),
+          path.join(legacyRoot, 'data', 'package-guard.db'),
+          path.join(legacyRoot, 'database', 'package-guard.db'),
+          path.join(legacyRoot, 'database', 'db.json'),
+          path.join(legacyRoot, 'database', 'app_storage.json'),
+        ];
+        for (const oldFile of candidates) {
+          if (fs.existsSync(oldFile)) {
+            fs.mkdirSync(targetDataDir, { recursive: true });
+            fs.copyFileSync(oldFile, targetDbPath);
+            break;
+          }
+        }
+      }
+
+      // 2. Migrate snapshots
+      const legacySnaps = path.join(legacyRoot, 'snapshots');
+      if (fs.existsSync(legacySnaps)) {
+        try {
+          fs.mkdirSync(targetSnaps, { recursive: true });
+          const files = fs.readdirSync(legacySnaps);
+          for (const file of files) {
+            const src = path.join(legacySnaps, file);
+            const dst = path.join(targetSnaps, file);
+            if (!fs.existsSync(dst) && fs.statSync(src).isFile()) {
+              try {
+                fs.copyFileSync(src, dst);
+              } catch { /* ignore */ }
+            }
+          }
+        } catch { /* ignore */ }
+      }
+
+      // 3. Migrate config
+      if (!fs.existsSync(targetConfig)) {
+        const legacyConfigs = [
+          path.join(legacyRoot, 'config', 'settings.json'),
+          path.join(legacyRoot, 'config.json'),
+        ];
+        for (const cfg of legacyConfigs) {
+          if (fs.existsSync(cfg)) {
+            try {
+              fs.mkdirSync(targetConfigDir, { recursive: true });
+              fs.copyFileSync(cfg, targetConfig);
+              break;
+            } catch { /* ignore */ }
+          }
+        }
+      }
+
+      // 4. Migrate permissions
+      const targetPermissions = path.join(targetConfigDir, 'permissions.json');
+      const legacyPermissions = path.join(legacyRoot, 'config', 'permissions.json');
+      if (!fs.existsSync(targetPermissions) && fs.existsSync(legacyPermissions)) {
+        try {
+          fs.mkdirSync(targetConfigDir, { recursive: true });
+          fs.copyFileSync(legacyPermissions, targetPermissions);
+        } catch { /* ignore */ }
+      }
+
+      // 5. Migrate install.ini
+      const targetInstallIni = path.join(targetRoot, 'install.ini');
+      const legacyInstallIni = path.join(legacyRoot, 'install.ini');
+      if (!fs.existsSync(targetInstallIni) && fs.existsSync(legacyInstallIni)) {
+        try {
+          fs.copyFileSync(legacyInstallIni, targetInstallIni);
+        } catch { /* ignore */ }
+      }
     }
   } catch (err) {
     // Non-blocking migration warning
@@ -131,15 +180,20 @@ function migrateLegacyDataIfNeeded(targetRoot: string): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Authoritative Central Path Responsibilities (Section 4)
+// Authoritative Central Path Responsibilities
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Returns the authoritative persistent user-data root directory:
- * `%APPDATA%\PackageGuard`
+ * `%APPDATA%\PackageGuardian`
  */
 export function getUserDataDirectory(): string {
   if (_dataRootOverride) return _dataRootOverride;
+  if (process.env.PACKAGE_GUARDIAN_DATA_ROOT) {
+    const dir = process.env.PACKAGE_GUARDIAN_DATA_ROOT;
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+    return dir;
+  }
   if (process.env.PG_DATA_ROOT) {
     const dir = process.env.PG_DATA_ROOT;
     try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
@@ -153,18 +207,35 @@ export function getUserDataDirectory(): string {
 
 /**
  * Returns the authoritative database path:
- * `%APPDATA%\PackageGuard\data\packageguard.db`
+ * `%APPDATA%\PackageGuardian\data\package_guardian.db`
  */
 export function getDatabasePath(): string {
   const root = getUserDataDirectory();
   const dataDir = path.join(root, 'data');
   try { fs.mkdirSync(dataDir, { recursive: true }); } catch { /* ignore */ }
-  return path.join(dataDir, 'packageguard.db');
+  const primaryDb = path.join(dataDir, 'package_guardian.db');
+
+  if (!fs.existsSync(primaryDb)) {
+    const localCandidates = [
+      path.join(dataDir, 'packageguard.db'),
+      path.join(dataDir, 'package-guard.db'),
+    ];
+    for (const cand of localCandidates) {
+      if (fs.existsSync(cand)) {
+        try {
+          fs.copyFileSync(cand, primaryDb);
+          break;
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
+  return primaryDb;
 }
 
 /**
  * Returns the authoritative snapshot storage directory:
- * `%APPDATA%\PackageGuard\snapshots`
+ * `%APPDATA%\PackageGuardian\snapshots`
  */
 export function getSnapshotDirectory(): string {
   const dir = path.join(getUserDataDirectory(), 'snapshots');
@@ -174,7 +245,7 @@ export function getSnapshotDirectory(): string {
 
 /**
  * Returns the authoritative logs directory:
- * `%APPDATA%\PackageGuard\logs`
+ * `%APPDATA%\PackageGuardian\logs`
  */
 export function getLogDirectory(): string {
   const dir = path.join(getUserDataDirectory(), 'logs');
@@ -184,7 +255,7 @@ export function getLogDirectory(): string {
 
 /**
  * Returns the authoritative config directory:
- * `%APPDATA%\PackageGuard\config`
+ * `%APPDATA%\PackageGuardian\config`
  */
 export function getConfigDirectory(): string {
   const dir = path.join(getUserDataDirectory(), 'config');
@@ -194,7 +265,7 @@ export function getConfigDirectory(): string {
 
 /**
  * Returns the authoritative settings configuration file path:
- * `%APPDATA%\PackageGuard\config\settings.json`
+ * `%APPDATA%\PackageGuardian\config\settings.json`
  */
 export function getSettingsPath(): string {
   return path.join(getConfigDirectory(), 'settings.json');
@@ -202,7 +273,7 @@ export function getSettingsPath(): string {
 
 /**
  * Returns the authoritative temp directory:
- * `%APPDATA%\PackageGuard\temp`
+ * `%APPDATA%\PackageGuardian\temp`
  */
 export function getTempDirectory(): string {
   const dir = path.join(getUserDataDirectory(), 'temp');
@@ -212,8 +283,8 @@ export function getTempDirectory(): string {
 
 /**
  * Returns the application installation or execution directory:
- * For normal Windows install: C:\Program Files\Package Guard\
- * For ZIP extraction: the extracted directory (e.g. D:\Tools\PackageGuard\)
+ * For normal Windows install: C:\Program Files\Package Guardian\
+ * For ZIP extraction: the extracted directory (e.g. D:\Tools\PackageGuardian\)
  * For development: workspace root
  */
 export function getApplicationDirectory(): string {
@@ -288,6 +359,13 @@ export function getServerJsonPath(): string {
 }
 
 export function getNotifySocketPath(): string {
+  if (process.platform === 'win32') {
+    return '\\\\.\\pipe\\package-guardian-notify';
+  }
+  return path.join(getUserDataDirectory(), 'notify.sock');
+}
+
+export function getLegacyNotifySocketPath(): string {
   if (process.platform === 'win32') {
     return '\\\\.\\pipe\\package-guard-notify';
   }

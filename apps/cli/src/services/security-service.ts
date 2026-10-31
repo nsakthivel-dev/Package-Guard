@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { execFile } from "node:child_process";
 import type BetterSqlite3 from "better-sqlite3";
 import type { Project, SecurityAdvisory } from "@package-guard/shared/types";
+import { getConfigDir } from "@package-guard/shared/paths";
 import {
   insertSecurityAdvisory,
   listSecurityAdvisories,
@@ -89,12 +90,7 @@ export async function runSecurityAudit(
 
   if (!securityLevel || !ignoredPackages) {
     try {
-      const settingsPath = path.join(
-        process.env.APPDATA || (process.platform === "darwin" ? (process.env.HOME ? path.join(process.env.HOME, "Library", "Application Support") : "") : "/var/local"),
-        "PackageGuard",
-        "config",
-        "settings.json"
-      );
+      const settingsPath = path.join(getConfigDir(), "settings.json");
       if (fs.existsSync(settingsPath)) {
         const fileData = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
         const s = fileData.settings || fileData;

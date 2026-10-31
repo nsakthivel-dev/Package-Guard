@@ -83,7 +83,7 @@ export async function executeConfig(
     return 0;
   }
 
-  console.log("Package Guard Configuration:\n");
+  console.log("Package Guardian Configuration:\n");
   console.log("KEY                     VALUE");
   console.log("----------------------------------------");
   for (const [k, v] of Object.entries(all)) {

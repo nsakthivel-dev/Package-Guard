@@ -64,29 +64,31 @@ export function findProject(db: BetterSqlite3.Database, explicitPath?: string): 
 }
 
 export function isInitialized(projectDir: string, project?: Project): boolean {
-  const marker = path.join(projectDir, ".packageguard");
-  return Boolean(project || fs.existsSync(marker));
+  const marker = path.join(projectDir, ".packageguardian");
+  const legacyMarker = path.join(projectDir, ".packageguard");
+  return Boolean(project || fs.existsSync(marker) || fs.existsSync(legacyMarker));
 }
 
 export interface InitResult {
   project: Project;
   alreadyInitialized: boolean;
   packageManager: string;
+  packageGuardianMdCreated?: boolean;
   packageGuardMdCreated?: boolean;
   agentsMdCreated?: boolean;
   agentsMdUpdated?: boolean;
 }
 
-export function generatePackageGuardMdContent(projectName: string, packageManager: string): string {
-  return `# PackageGuard AI Instructions
+export function generatePackageGuardianMdContent(projectName: string, packageManager: string): string {
+  return `# Package Guardian AI Instructions
 
-PackageGuard (\`pg\`) is the dependency-state management tool for this project.
+Package Guardian (\`pg\`) is the dependency-state management tool for this project.
 
 It allows developers and AI coding agents to inspect, track, snapshot, compare, verify, and restore the project's dependency state.
 
 ## Purpose
 
-Use PackageGuard when working with changes that may affect:
+Use Package Guardian when working with changes that may affect:
 
 - dependencies
 - package versions
@@ -145,32 +147,17 @@ AI agents should prefer structured JSON output by passing \`--json\` to commands
 \`\`\`bash
 pg status --json
 pg packages --json
-pg diff --json
 \`\`\`
-
-Machine-readable output is:
-- Valid JSON written to \`stdout\`.
-- Free from ANSI color codes, spinners, and ASCII banners.
-- Accompanied by diagnostic or progress notes on \`stderr\` when applicable.
-- Standardized with clear success/error structures and predictable exit codes.
 
 ## Non-Interactive Usage
 
-AI agents run non-interactively in shell environments. Destructive operations (such as \`snapshot restore\` and \`snapshot delete\`) require confirmation:
+AI agents run non-interactively in shell environments. Destructive operations require confirmation:
 - Use the non-interactive confirmation flag \`-y\` (or \`--yes\`, \`--force\`).
-- If an agent omits confirmation flags in non-interactive or JSON mode, the CLI returns a structured error and non-zero exit code instead of hanging.
 
 \`\`\`bash
 pg snapshot restore <id> -y --json
 pg snapshot delete <id> -y --json
 \`\`\`
-
-## Safety
-
-Before any potentially destructive operation:
-1. Inspect the current dependency state.
-2. Ensure a recent recoverable snapshot exists (\`pg snapshot list --json\`).
-3. Verify project integrity after state restoration.
 
 ## Recovery
 
@@ -183,52 +170,58 @@ To recover from problematic dependency changes:
 ## Important Rules
 
 - Use the \`pg\` CLI exclusively through normal shell commands.
-- Do not modify the PackageGuard SQLite database directly.
-- Do not modify internal files in \`.packageguard/\` unnecessarily.
-- Do not delete PackageGuard snapshots or state files manually.
-- Do not bypass PackageGuard by inventing duplicate dependency tracking mechanisms.
+- Do not modify the Package Guardian SQLite database directly.
+- Do not modify internal files in \`.packageguardian/\` unnecessarily.
+- Do not delete Package Guardian snapshots or state files manually.
+- Do not bypass Package Guardian by inventing duplicate dependency tracking mechanisms.
 - Prefer \`--json\` output for programmatic parsing.
 - Consult \`pg help <command>\` whenever parameter usage is uncertain.
 - Preserve existing project configuration and functionality.
 `;
 }
 
-export function ensurePackageGuardMd(projectDir: string, projectName: string, packageManager: string): boolean {
-  const markerDir = path.join(projectDir, ".packageguard");
-  fs.mkdirSync(markerDir, { recursive: true });
-  const mdPath = path.join(markerDir, "PACKAGEGUARD.md");
+export const generatePackageGuardMdContent = generatePackageGuardianMdContent;
 
-  if (fs.existsSync(mdPath)) {
-    try {
-      const existing = fs.readFileSync(mdPath, "utf8");
-      if (existing.trim().length > 0 && existing.includes("PackageGuard")) {
-        return false; // preserved
-      }
-    } catch {
-      // fallback to writing
-    }
+export function ensurePackageGuardianMd(projectDir: string, projectName: string, packageManager: string): boolean {
+  const markerDir = path.join(projectDir, ".packageguardian");
+  const legacyDir = path.join(projectDir, ".packageguard");
+  fs.mkdirSync(markerDir, { recursive: true });
+  fs.mkdirSync(legacyDir, { recursive: true });
+
+  const mdPath = path.join(markerDir, "PACKAGEGUARDIAN.md");
+  const legacyMdPath = path.join(legacyDir, "PACKAGEGUARD.md");
+
+  const content = generatePackageGuardianMdContent(projectName, packageManager);
+
+  let created = false;
+  if (!fs.existsSync(mdPath)) {
+    fs.writeFileSync(mdPath, content, "utf8");
+    created = true;
+  }
+  if (!fs.existsSync(legacyMdPath)) {
+    fs.writeFileSync(legacyMdPath, content, "utf8");
   }
 
-  const content = generatePackageGuardMdContent(projectName, packageManager);
-  fs.writeFileSync(mdPath, content, "utf8");
-  return true;
+  return created;
 }
 
-export const AGENTS_MD_SECTION = `# PackageGuard
+export const ensurePackageGuardMd = ensurePackageGuardianMd;
 
-This project uses PackageGuard (\`pg\`) for dependency-state management.
+export const AGENTS_MD_SECTION = `# Package Guardian
 
-Before making significant dependency changes, inspect the current state with PackageGuard and create a recoverable snapshot when appropriate.
+This project uses Package Guardian (\`pg\`) for dependency-state management.
+
+Before making significant dependency changes, inspect the current state with Package Guardian and create a recoverable snapshot when appropriate.
 
 Read:
 
-    .packageguard/PACKAGEGUARD.md
+    .packageguardian/PACKAGEGUARDIAN.md
 
-for the complete PackageGuard AI instructions.
+for the complete Package Guardian AI instructions.
 
 Use the existing \`pg\` CLI through normal shell commands.
 
-Do not create a separate PackageGuard API, server, plugin, or dependency-management mechanism.
+Do not create a separate Package Guardian API, server, plugin, or dependency-management mechanism.
 `;
 
 export function ensureAgentsMd(projectDir: string): { created: boolean; updated: boolean } {
@@ -241,7 +234,14 @@ export function ensureAgentsMd(projectDir: string): { created: boolean; updated:
 
   try {
     const existing = fs.readFileSync(agentsPath, "utf8");
-    if (existing.includes("# PackageGuard") || existing.includes("PackageGuard (`pg`)") || existing.includes("PACKAGEGUARD.md")) {
+    if (
+      existing.includes("# Package Guardian") ||
+      existing.includes("Package Guardian (`pg`)") ||
+      existing.includes("PACKAGEGUARDIAN.md") ||
+      existing.includes("# PackageGuard") ||
+      existing.includes("PackageGuard (`pg`)") ||
+      existing.includes("PACKAGEGUARD.md")
+    ) {
       return { created: false, updated: false };
     }
 
@@ -263,20 +263,22 @@ export function initializeProject(
   const existing = getProjectByPath(db, normalizedPath);
   const pm = detectPackageManager(normalizedPath);
 
-  // If already registered in DB and directory has .packageguard
-  const markerDir = path.join(normalizedPath, ".packageguard");
-  if (existing && fs.existsSync(markerDir)) {
+  // If already registered in DB and directory has .packageguardian or .packageguard
+  const markerDir = path.join(normalizedPath, ".packageguardian");
+  const legacyMarkerDir = path.join(normalizedPath, ".packageguard");
+  if (existing && (fs.existsSync(markerDir) || fs.existsSync(legacyMarkerDir))) {
     if (pm && existing.package_manager !== pm) {
       setProjectPackageManager(db, existing.id, pm);
     }
     const resolvedPm = existing.package_manager || pm || "npm";
-    const pgMdCreated = ensurePackageGuardMd(normalizedPath, existing.name, resolvedPm);
+    const pgMdCreated = ensurePackageGuardianMd(normalizedPath, existing.name, resolvedPm);
     const agentsResult = ensureAgentsMd(normalizedPath);
 
     return {
       project: existing,
       alreadyInitialized: true,
       packageManager: resolvedPm,
+      packageGuardianMdCreated: pgMdCreated,
       packageGuardMdCreated: pgMdCreated,
       agentsMdCreated: agentsResult.created,
       agentsMdUpdated: agentsResult.updated
@@ -300,26 +302,27 @@ export function initializeProject(
     }
   }
 
-  // Ensure .packageguard directory & config exists
+  // Ensure .packageguardian directory & config exists (and maintain .packageguard for compatibility)
   fs.mkdirSync(markerDir, { recursive: true });
+  fs.mkdirSync(legacyMarkerDir, { recursive: true });
   const configPath = path.join(markerDir, "config.json");
+  const legacyConfigPath = path.join(legacyMarkerDir, "config.json");
   const projectId = existing ? existing.id : `proj-${randomUUID().slice(0, 8)}`;
 
-  fs.writeFileSync(
-    configPath,
-    JSON.stringify(
-      {
-        id: projectId,
-        name: projectName,
-        packageManager: pm,
-        initializedAt: existing?.created_at || new Date().toISOString(),
-        version: "1.0.0"
-      },
-      null,
-      2
-    ),
-    "utf8"
+  const configContent = JSON.stringify(
+    {
+      id: projectId,
+      name: projectName,
+      packageManager: pm,
+      initializedAt: existing?.created_at || new Date().toISOString(),
+      version: "1.0.0"
+    },
+    null,
+    2
   );
+
+  fs.writeFileSync(configPath, configContent, "utf8");
+  fs.writeFileSync(legacyConfigPath, configContent, "utf8");
 
   const project = upsertProject(db, {
     id: projectId,
@@ -331,13 +334,14 @@ export function initializeProject(
   setProjectPackageManager(db, projectId, pm);
 
   // Generate AI instructions
-  const pgMdCreated = ensurePackageGuardMd(normalizedPath, projectName, pm);
+  const pgMdCreated = ensurePackageGuardianMd(normalizedPath, projectName, pm);
   const agentsResult = ensureAgentsMd(normalizedPath);
 
   return {
     project: { ...project, package_manager: pm },
     alreadyInitialized: false,
     packageManager: pm,
+    packageGuardianMdCreated: pgMdCreated,
     packageGuardMdCreated: pgMdCreated,
     agentsMdCreated: agentsResult.created,
     agentsMdUpdated: agentsResult.updated
@@ -355,14 +359,19 @@ export function renameCurrentProject(
 ): boolean {
   const success = renameProject(db, project.id, newName);
   if (success) {
-    const marker = path.join(project.path, ".packageguard", "config.json");
-    if (fs.existsSync(marker)) {
-      try {
-        const cfg = JSON.parse(fs.readFileSync(marker, "utf8"));
-        cfg.name = newName;
-        fs.writeFileSync(marker, JSON.stringify(cfg, null, 2), "utf8");
-      } catch {
-        // ignore
+    const candidateMarkers = [
+      path.join(project.path, ".packageguardian", "config.json"),
+      path.join(project.path, ".packageguard", "config.json"),
+    ];
+    for (const marker of candidateMarkers) {
+      if (fs.existsSync(marker)) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(marker, "utf8"));
+          cfg.name = newName;
+          fs.writeFileSync(marker, JSON.stringify(cfg, null, 2), "utf8");
+        } catch {
+          // ignore
+        }
       }
     }
     try {

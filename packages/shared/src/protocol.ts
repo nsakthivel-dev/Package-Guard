@@ -1,4 +1,5 @@
-export const PIPE_NAME = "\\\\.\\pipe\\PackageGuard";
+export const PIPE_NAME = "\\\\.\\pipe\\PackageGuardian";
+export const LEGACY_PIPE_NAME = "\\\\.\\pipe\\PackageGuard";
 export const PROTOCOL_VERSION = 1;
 
 export type RequestId = string;
@@ -27,7 +28,8 @@ export interface CliEventRequest {
   payload: unknown;
 }
 
-export type PackageGuardRequest = PingRequest | CliEventRequest;
+export type PackageGuardianRequest = PingRequest | CliEventRequest;
+export type PackageGuardRequest = PackageGuardianRequest;
 
 // ---------------------------------------------------------------------------
 // Responses
@@ -53,13 +55,14 @@ export interface AckResponse {
   };
 }
 
-export type PackageGuardResponse = PongResponse | AckResponse;
+export type PackageGuardianResponse = PongResponse | AckResponse;
+export type PackageGuardResponse = PackageGuardianResponse;
 
 // ---------------------------------------------------------------------------
 // Type guards
 // ---------------------------------------------------------------------------
 
-export function isPackageGuardRequest(value: unknown): value is PackageGuardRequest {
+export function isPackageGuardianRequest(value: unknown): value is PackageGuardianRequest {
   if (!isRecord(value)) return false;
   if (typeof value["id"] !== "string" || (value["id"] as string).length === 0) return false;
 
@@ -81,7 +84,9 @@ export function isPackageGuardRequest(value: unknown): value is PackageGuardRequ
   return false;
 }
 
-export function isPackageGuardResponse(value: unknown): value is PackageGuardResponse {
+export const isPackageGuardRequest = isPackageGuardianRequest;
+
+export function isPackageGuardianResponse(value: unknown): value is PackageGuardianResponse {
   if (!isRecord(value)) return false;
   if (typeof value["id"] !== "string" || (value["id"] as string).length === 0) return false;
 
@@ -102,12 +107,14 @@ export function isPackageGuardResponse(value: unknown): value is PackageGuardRes
   return false;
 }
 
+export const isPackageGuardResponse = isPackageGuardianResponse;
+
 // ---------------------------------------------------------------------------
 // Encoding
 // ---------------------------------------------------------------------------
 
 export function encodeMessage(
-  message: PackageGuardRequest | PackageGuardResponse
+  message: PackageGuardianRequest | PackageGuardianResponse
 ): string {
   return `${JSON.stringify(message)}\n`;
 }

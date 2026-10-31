@@ -26,7 +26,7 @@ export async function executeDoctor(
     return report.overall === "OK" ? 0 : 1;
   }
 
-  console.log("Package Guard Doctor\n");
+  console.log("Package Guardian Doctor\n");
 
   for (const c of report.checks) {
     const tag = c.status === "OK" ? "[PASS]" : c.status === "WARN" ? "[WARN]" : "[FAIL]";

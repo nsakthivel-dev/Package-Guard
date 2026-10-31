@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   // Version check
   if (firstArg === "--version" || firstArg === "-v" || firstArg === "version") {
     if (isJson) {
-      outputSuccess({ name: "PackageGuard CLI", version: "1.0.0" });
+      outputSuccess({ name: "PackageGuardian CLI", version: "1.0.0" });
       process.exitCode = 0;
       return;
     }

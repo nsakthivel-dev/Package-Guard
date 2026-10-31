@@ -81,5 +81,6 @@ electron-stderr.txt
 # Scratch / planning documents (root-level only)
 /*.docx
 
-# PackageGuard local project data
+# Package Guardian local project data
+.packageguardian/
 .packageguard/

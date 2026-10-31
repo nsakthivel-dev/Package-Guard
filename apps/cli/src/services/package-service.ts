@@ -42,7 +42,7 @@ function fetchLatestNpmVersion(packageName: string): Promise<string | null> {
     const req = https.get(
       `https://registry.npmjs.org/${encodeURIComponent(packageName)}/latest`,
       {
-        headers: { "User-Agent": "Package-Guard-CLI/0.1.0" },
+        headers: { "User-Agent": "Package-Guardian-CLI/1.0.0" },
         timeout: 1800
       },
       (res) => {

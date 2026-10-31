@@ -48,7 +48,7 @@ export async function runDoctor(
   checks.push({
     name: "CLI",
     status: "OK",
-    message: `PackageGuard CLI v1.0.0 (Node ${process.version})`
+    message: `PackageGuardian CLI v1.0.0 (Node ${process.version})`
   });
 
   // 2. Electron Subsystem
@@ -228,13 +228,18 @@ export async function runDoctor(
 
   // 11. PATH Subsystem
   const pathEnv = process.env.PATH || "";
-  const inPath = pathEnv.toLowerCase().includes("windowsapps") || pathEnv.toLowerCase().includes("package guard");
+  const inPath =
+    pathEnv.toLowerCase().includes("windowsapps") ||
+    pathEnv.toLowerCase().includes("package guardian") ||
+    pathEnv.toLowerCase().includes("packageguardian") ||
+    pathEnv.toLowerCase().includes("package guard") ||
+    pathEnv.toLowerCase().includes("packageguard");
   checks.push({
     name: "PATH",
     status: inPath ? "OK" : "WARN",
     message: inPath
-      ? "User PATH includes Package Guard execution directory"
-      : "Package Guard directory not explicitly found in PATH environment variable"
+      ? "User PATH includes Package Guardian execution directory"
+      : "Package Guardian directory not explicitly found in PATH environment variable"
   });
 
   const overall = checks.some((c) => c.status === "FAIL") ? "FAIL" : "OK";
@@ -300,18 +305,17 @@ export function repairConfig(db: BetterSqlite3.Database, projectDir?: string): R
     if (projectDir) {
       const proj = getProjectByPath(db, projectDir);
       if (proj) {
-        const marker = path.join(projectDir, ".packageguard");
+        const marker = path.join(projectDir, ".packageguardian");
+        const legacyMarker = path.join(projectDir, ".packageguard");
         fs.mkdirSync(marker, { recursive: true });
-        const configFile = path.join(marker, "config.json");
-        fs.writeFileSync(
-          configFile,
-          JSON.stringify(
-            { id: proj.id, name: proj.name, initializedAt: proj.created_at, version: "1.0.0" },
-            null,
-            2
-          ),
-          "utf8"
+        fs.mkdirSync(legacyMarker, { recursive: true });
+        const cfgData = JSON.stringify(
+          { id: proj.id, name: proj.name, initializedAt: proj.created_at, version: "1.0.0" },
+          null,
+          2
         );
+        fs.writeFileSync(path.join(marker, "config.json"), cfgData, "utf8");
+        fs.writeFileSync(path.join(legacyMarker, "config.json"), cfgData, "utf8");
       }
     }
 

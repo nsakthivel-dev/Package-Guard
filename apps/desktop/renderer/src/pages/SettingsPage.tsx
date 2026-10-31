@@ -114,7 +114,7 @@ export default function SettingsPage() {
     <div className="min-h-full bg-background font-hanken text-on-surface" data-testid="settings-page">
       <header className="px-8 py-6 border-b border-outline-variant">
         <h2 className="text-[32px] font-bold text-on-surface leading-tight mb-1">Audit Configuration</h2>
-        <p className="text-body-lg text-on-surface-variant">Configure how PackageGuard analyzes your environments</p>
+        <p className="text-body-lg text-on-surface-variant">Configure how Package Guardian analyzes your environments</p>
       </header>
 
       <main className="max-w-[1000px] mx-auto px-8 py-10 flex flex-col gap-10">
@@ -131,7 +131,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-1">
                 <p className="text-[15px] font-bold text-on-surface">Background Scan Frequency</p>
-                <p className="text-[13px] text-on-surface-variant max-w-[500px]">How often PackageGuard checks for updates in the background.</p>
+                <p className="text-[13px] text-on-surface-variant max-w-[500px]">How often Package Guardian checks for updates in the background.</p>
               </div>
               <Select 
                 value={String(settings.cacheDurationHours || 6)} 
@@ -437,7 +437,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <p className="text-[15px] font-bold text-on-surface">Privacy Policy</p>
               <p className="text-[13px] text-on-surface-variant max-w-[540px]">
-                Read Package Guard's local-first privacy policy and data handling principles.
+                Read Package Guardian's local-first privacy policy and data handling principles.
               </p>
             </div>
             <Button 
@@ -455,7 +455,7 @@ export default function SettingsPage() {
         <footer className="pt-8 flex flex-col items-center text-center space-y-3 border-t border-outline-variant">
           <div className="flex items-center gap-2 text-primary">
             <ShieldCheck className="w-5 h-5" />
-            <span className="text-[18px] font-bold">PackageGuard Audit Engine</span>
+            <span className="text-[18px] font-bold">Package Guardian Audit Engine</span>
           </div>
           <p className="text-[12px] text-outline leading-relaxed">
             Configuration Profile: Default V1.0<br/>

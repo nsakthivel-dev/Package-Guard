@@ -805,7 +805,7 @@ export default function Environments() {
                 <div>
                   <p className="text-[15px] font-semibold text-on-surface group-hover:text-[#4338CA] transition-colors">No projects initialized</p>
                   <p className="text-[13px] text-muted-foreground mt-1 max-w-sm leading-relaxed group-hover:text-[#4338CA]/80 transition-colors">
-                    Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary font-medium">pg init</code> inside a project directory to register it with PackageGuard.
+                    Run <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary font-medium">pg init</code> inside a project directory to register it with Package Guardian.
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary mt-1 group-hover:text-[#4338CA]">
@@ -1228,7 +1228,7 @@ export default function Environments() {
             <div className="space-y-4 py-3">
               <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
                 <p className="text-[13px] text-on-surface leading-relaxed">
-                  Rename &ldquo;<span className="font-semibold text-primary">{renameTarget?.name}</span>&rdquo; to &ldquo;<span className="font-semibold text-primary">{renameInput.trim()}</span>&rdquo;? This change will be reflected throughout PackageGuard. Existing scan history, snapshots, and package records will be preserved.
+                  Rename &ldquo;<span className="font-semibold text-primary">{renameTarget?.name}</span>&rdquo; to &ldquo;<span className="font-semibold text-primary">{renameInput.trim()}</span>&rdquo;? This change will be reflected throughout Package Guardian. Existing scan history, snapshots, and package records will be preserved.
                 </p>
               </div>
             </div>
@@ -1314,10 +1314,10 @@ export default function Environments() {
 
             <div className="p-4 rounded-lg bg-destructive/5 border border-destructive/20 space-y-2">
               <p className="text-[13px] text-on-surface leading-relaxed">
-                Are you sure you want to remove &ldquo;<span className="font-semibold text-destructive">{removeTarget?.name}</span>&rdquo; from Package Guard?
+                Are you sure you want to remove &ldquo;<span className="font-semibold text-destructive">{removeTarget?.name}</span>&rdquo; from Package Guardian?
               </p>
               <p className="text-[12px] text-muted-foreground leading-relaxed">
-                This will remove the project from Package Guard&rsquo;s tracked environments. <span className="font-semibold text-on-surface">Your actual project directory, source code, and local files will NOT be deleted or modified.</span>
+                This will remove the project from Package Guardian&rsquo;s tracked environments. <span className="font-semibold text-on-surface">Your actual project directory, source code, and local files will NOT be deleted or modified.</span>
               </p>
             </div>
           </div>

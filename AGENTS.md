@@ -1,15 +1,16 @@
-# PackageGuard
+# Package Guardian
 
-This project uses PackageGuard (`pg`) for dependency-state management.
+This project uses Package Guardian (`pg`) for dependency-state management.
 
-Before making significant dependency changes, inspect the current state with PackageGuard and create a recoverable snapshot when appropriate.
+Before making significant dependency changes, inspect the current state with Package Guardian and create a recoverable snapshot when appropriate.
 
 Read:
 
-    .packageguard/PACKAGEGUARD.md
+    .packageguardian/PACKAGEGUARDIAN.md
+    (or legacy .packageguard/PACKAGEGUARD.md)
 
-for the complete PackageGuard AI instructions.
+for the complete Package Guardian AI instructions.
 
 Use the existing `pg` CLI through normal shell commands.
 
-Do not create a separate PackageGuard API, server, plugin, or dependency-management mechanism.
+Do not create a separate Package Guardian API, server, plugin, or dependency-management mechanism.

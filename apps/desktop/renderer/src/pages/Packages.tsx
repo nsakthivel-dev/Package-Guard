@@ -42,19 +42,24 @@ import {
 } from "@/components/ui/dialog";
 
 interface PackageMetadata {
+  summary: string | null;
   description: string | null;
   homepage: string | null;
   timestamp: number;
+  status?: 'loaded' | 'missing' | 'error' | 'not_found';
+  notFound?: boolean;
+  error?: boolean;
 }
 
-const METADATA_CACHE_KEY = "pg_package_metadata_cache_v1";
+const METADATA_CACHE_KEY = "pg_package_metadata_cache_v3";
 const METADATA_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const memoryCache = new Map<string, PackageMetadata>();
+const inFlightKeys = new Set<string>();
 
 function initMetadataCache() {
   try {
-    const raw = localStorage.getItem(METADATA_CACHE_KEY);
+    const raw = localStorage.getItem(METADATA_CACHE_KEY) || localStorage.getItem("pg_package_metadata_cache_v2");
     if (raw) {
       const parsed = JSON.parse(raw);
       const now = Date.now();
@@ -74,7 +79,9 @@ function saveMetadataCache() {
   try {
     const obj: Record<string, PackageMetadata> = {};
     for (const [key, val] of memoryCache.entries()) {
-      obj[key] = val;
+      if (val && !val.error) {
+        obj[key] = val;
+      }
     }
     localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify(obj));
   } catch {
@@ -83,29 +90,63 @@ function saveMetadataCache() {
 }
 
 async function fetchPackageMetadata(name: string, ecosystem: string): Promise<PackageMetadata> {
-  const normEco = (ecosystem === 'venv' || ecosystem === 'conda') ? 'pip' : ecosystem;
-  const cacheKey = `${normEco}:${name.toLowerCase()}`;
+  const normEco = (ecosystem === 'venv' || ecosystem === 'conda' || ecosystem === 'python') ? 'pip' : ecosystem;
+  const pypiNormalizedName = normEco === 'pip' ? name.toLowerCase().replace(/[._]/g, '-') : name.toLowerCase();
+  const cacheKey = `${normEco}:${pypiNormalizedName}`;
+  const now = Date.now();
 
   if (memoryCache.has(cacheKey)) {
-    return memoryCache.get(cacheKey)!;
+    const cached = memoryCache.get(cacheKey)!;
+    if (cached.status === 'loaded' && (now - cached.timestamp < METADATA_CACHE_TTL)) {
+      return cached;
+    }
+    if (cached.status === 'not_found' && (now - cached.timestamp < 24 * 60 * 60 * 1000)) {
+      return cached;
+    }
+    if (cached.status === 'error' && (now - cached.timestamp < 60 * 1000)) {
+      return cached;
+    }
   }
 
-  // Handle offline mode gracefully
+  // 1. Primary path: Use Electron IPC in main process (no CSP, no CORS, non-blocking)
+  const api = (window as any).electronAPI;
+  if (api?.getPackageMetadata) {
+    try {
+      const res = await api.getPackageMetadata(name, normEco);
+      if (res) {
+        const meta: PackageMetadata = {
+          summary: res.summary || null,
+          description: res.description || res.summary || null,
+          homepage: res.homepage || null,
+          status: res.status || ((res.summary || res.description) ? 'loaded' : 'missing'),
+          timestamp: Date.now(),
+          error: res.error,
+          notFound: res.notFound,
+        };
+        memoryCache.set(cacheKey, meta);
+        saveMetadataCache();
+        return meta;
+      }
+    } catch {
+      // IPC failure fallback
+    }
+  }
+
+  // 2. Fallback path: Direct browser fetch (for web preview or when IPC is not connected)
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    const unavailable: PackageMetadata = { description: null, homepage: null, timestamp: Date.now() };
-    memoryCache.set(cacheKey, unavailable);
-    return unavailable;
+    const offlineMeta: PackageMetadata = { summary: null, description: null, homepage: null, timestamp: now, error: true, status: 'error' };
+    memoryCache.set(cacheKey, offlineMeta);
+    return offlineMeta;
   }
 
-  // Handle private or local package scopes safely
   if (name.startsWith('@internal/') || name.startsWith('@local/') || name.startsWith('@workspace/')) {
-    const unavailable: PackageMetadata = { description: null, homepage: null, timestamp: Date.now() };
+    const unavailable: PackageMetadata = { summary: null, description: null, homepage: null, timestamp: now, notFound: true, status: 'not_found' };
     memoryCache.set(cacheKey, unavailable);
     return unavailable;
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  const timeoutId = setTimeout(() => controller.abort(), 7000);
 
   try {
     if (normEco === 'npm' || normEco === 'pnpm' || normEco === 'yarn') {
@@ -115,50 +156,67 @@ async function fetchPackageMetadata(name: string, ecosystem: string): Promise<Pa
       });
       clearTimeout(timeoutId);
       if (!res.ok) {
-        const unavailable: PackageMetadata = { description: null, homepage: null, timestamp: Date.now() };
-        memoryCache.set(cacheKey, unavailable);
-        saveMetadataCache();
-        return unavailable;
+        if (res.status === 404) {
+          const notFound: PackageMetadata = { summary: null, description: null, homepage: null, notFound: true, status: 'not_found', timestamp: Date.now() };
+          memoryCache.set(cacheKey, notFound);
+          return notFound;
+        }
+        const errMeta: PackageMetadata = { summary: null, description: null, homepage: null, timestamp: Date.now(), error: true, status: 'error' };
+        memoryCache.set(cacheKey, errMeta);
+        return errMeta;
       }
       const data = await res.json();
-      const desc = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
+      const summary = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
+      const description = typeof data.readme === 'string' && data.readme.trim() ? data.readme.trim() : summary;
       const homepage = typeof data.homepage === 'string' ? data.homepage : null;
-      const meta: PackageMetadata = { description: desc, homepage, timestamp: Date.now() };
+      const meta: PackageMetadata = { summary, description, homepage, status: (summary || description) ? 'loaded' : 'missing', timestamp: Date.now() };
       memoryCache.set(cacheKey, meta);
       saveMetadataCache();
       return meta;
     } else if (normEco === 'pip') {
-      const pypiName = name.toLowerCase().replace(/[._]/g, '-');
-      const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(pypiName)}/json`, {
+      const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(pypiNormalizedName)}/json`, {
         signal: controller.signal,
         headers: { 'Accept': 'application/json' }
       });
       clearTimeout(timeoutId);
       if (!res.ok) {
-        const unavailable: PackageMetadata = { description: null, homepage: null, timestamp: Date.now() };
-        memoryCache.set(cacheKey, unavailable);
-        saveMetadataCache();
-        return unavailable;
+        if (res.status === 404) {
+          const notFound: PackageMetadata = { summary: null, description: null, homepage: null, notFound: true, status: 'not_found', timestamp: Date.now() };
+          memoryCache.set(cacheKey, notFound);
+          return notFound;
+        }
+        const errMeta: PackageMetadata = { summary: null, description: null, homepage: null, timestamp: Date.now(), error: true, status: 'error' };
+        memoryCache.set(cacheKey, errMeta);
+        return errMeta;
       }
       const data = await res.json();
-      const desc = typeof data.info?.summary === 'string' && data.info.summary.trim() ? data.info.summary.trim() : null;
-      const homepage = data.info?.home_page || data.info?.project_urls?.Homepage || null;
-      const meta: PackageMetadata = { description: desc, homepage, timestamp: Date.now() };
+      let summary = typeof data.info?.summary === 'string' ? data.info.summary.trim() : '';
+      if (!summary || summary.toUpperCase() === 'UNKNOWN') summary = '';
+      let description = typeof data.info?.description === 'string' ? data.info.description.trim() : '';
+      if (!description || description.toUpperCase() === 'UNKNOWN') description = '';
+      if (!summary && description) {
+        summary = description.split(/\r?\n/).find((l: string) => l.trim() && !l.startsWith('#'))?.slice(0, 160) || '';
+      }
+      const homepage = data.info?.home_page || data.info?.project_urls?.Homepage || data.info?.project_urls?.Documentation || null;
+      const meta: PackageMetadata = { 
+        summary: summary || null, 
+        description: description || summary || null, 
+        homepage, 
+        status: (summary || description) ? 'loaded' : 'missing', 
+        timestamp: Date.now() 
+      };
       memoryCache.set(cacheKey, meta);
       saveMetadataCache();
       return meta;
     }
   } catch {
     clearTimeout(timeoutId);
-    const unavailable: PackageMetadata = { description: null, homepage: null, timestamp: Date.now() };
-    memoryCache.set(cacheKey, unavailable);
-    saveMetadataCache();
-    return unavailable;
+    const errMeta: PackageMetadata = { summary: null, description: null, homepage: null, timestamp: Date.now(), error: true, status: 'error' };
+    memoryCache.set(cacheKey, errMeta);
+    return errMeta;
   }
 
-  const fallback: PackageMetadata = { description: null, homepage: null, timestamp: Date.now() };
-  memoryCache.set(cacheKey, fallback);
-  return fallback;
+  return { summary: null, description: null, homepage: null, timestamp: Date.now(), status: 'missing' };
 }
 
 const ACCENT  = "#6366F1";   // indigo — matches Dashboard primary
@@ -581,6 +639,7 @@ export default function Packages() {
   
   const [selectedPackageForDetails, setSelectedPackageForDetails] = useState<Package | null>(null);
   const [detailsConfirmAction, setDetailsConfirmAction] = useState<'update' | 'uninstall' | null>(null);
+  const [detailsMetaLoading, setDetailsMetaLoading] = useState(false);
   const [isCheckingSingle, setIsCheckingSingle] = useState(false);
   const [checkSingleStatus, setCheckSingleStatus] = useState<{ status: 'idle' | 'checking' | 'success' | 'error'; message: string }>({
     status: 'idle',
@@ -882,10 +941,18 @@ export default function Packages() {
           }
           return prev;
         });
-        if (res.description) {
-          const normEco = (pkg.ecosystem === 'venv' || pkg.ecosystem === 'conda') ? 'pip' : pkg.ecosystem;
-          const key = `${normEco}:${pkg.name.toLowerCase()}`;
-          const newMeta: PackageMetadata = { description: res.description, homepage: res.homepage || null, timestamp: Date.now() };
+        if (res.description || res.summary) {
+          const ecoStr = String(pkg.ecosystem);
+          const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : pkg.ecosystem;
+          const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+          const key = `${normEco}:${pypiNormalizedName}`;
+          const newMeta: PackageMetadata = { 
+            summary: res.summary || res.description || null,
+            description: res.description || res.summary || null, 
+            homepage: res.homepage || null, 
+            timestamp: Date.now(),
+            status: 'loaded'
+          };
           memoryCache.set(key, newMeta);
           setMetadataMap(prev => ({ ...prev, [key]: newMeta }));
           saveMetadataCache();
@@ -929,28 +996,121 @@ export default function Packages() {
     if (eco === 'npm' || eco === 'pnpm' || eco === 'yarn') {
       return `https://www.npmjs.com/package/${encodeURIComponent(pkg.name)}`;
     }
-    if (eco === 'pip' || eco === 'venv' || eco === 'conda') {
+    if (eco === 'pip' || eco === 'venv' || eco === 'conda' || eco === 'python') {
       return `https://pypi.org/project/${encodeURIComponent(pkg.name)}/`;
     }
     return null;
   };
 
-  const getPackageDescription = (pkg: Package): string => {
-    // 1. Existing metadata on package if genuine and not placeholder
-    if (pkg.description && pkg.description !== "No description available" && pkg.description.trim()) {
-      return pkg.description.trim();
+  const cleanDescriptionText = (raw?: string | null): string => {
+    if (!raw || typeof raw !== 'string') return '';
+    let text = raw.trim();
+    // Remove markdown badges like [![...](...)](...) or [![...](...)]
+    text = text.replace(/\[!\[[\s\S]*?\]\([\s\S]*?\)\]\([\s\S]*?\)/g, '');
+    text = text.replace(/!\[[\s\S]*?\]\([\s\S]*?\)/g, '');
+    text = text.replace(/\[![\s\S]*?\]/g, '');
+    // Remove HTML tags
+    text = text.replace(/<[^>]+>/g, '');
+    // Remove headers
+    text = text.replace(/^#+\s+/gm, '');
+    // Clean markdown links [text](url) -> text
+    text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+    text = text.replace(/\*\*([^*]+)\*\*/g, '$1');
+    text = text.replace(/__([^_]+)__/g, '$1');
+
+    // Split into paragraphs and filter out noise/license sections
+    const paragraphs = text.split(/\r?\n\s*\r?\n/)
+      .map(p => p.trim())
+      .filter(p => {
+        if (!p) return false;
+        const lower = p.toLowerCase();
+        if (lower.startsWith('license') || lower.startsWith('table of contents')) return false;
+        if (lower.startsWith('---') || lower.startsWith('===')) return false;
+        if (lower.startsWith('contributing') || lower.startsWith('authors')) return false;
+        return true;
+      });
+
+    if (paragraphs.length > 0) {
+      const combined = paragraphs.slice(0, 2).join('\n\n').trim();
+      if (combined.length > 450) {
+        const sentenceEnd = combined.indexOf('.', 300);
+        if (sentenceEnd !== -1 && sentenceEnd < 500) {
+          return combined.slice(0, sentenceEnd + 1).trim();
+        }
+        return combined.slice(0, 450).trim() + '…';
+      }
+      return combined;
     }
-    // 2. Cached metadata from registry
-    const normEco = (pkg.ecosystem === 'venv' || pkg.ecosystem === 'conda') ? 'pip' : pkg.ecosystem;
-    const key = `${normEco}:${pkg.name.toLowerCase()}`;
+    return text.trim();
+  };
+
+  const getPackageSummary = (pkg: Package): string => {
+    // 1. Explicit summary from package
+    if ((pkg as any).summary && (pkg as any).summary.trim() && (pkg as any).summary !== "No description available") {
+      const cleaned = cleanDescriptionText((pkg as any).summary);
+      if (cleaned) return cleaned;
+    }
+    // 2. Existing valid description if short or genuine
+    if (pkg.description && pkg.description !== "No description available" && pkg.description.trim()) {
+      const cleaned = cleanDescriptionText(pkg.description);
+      if (cleaned) return cleaned;
+    }
+    // 3. Cached metadata from registry
+    const ecoStr = String(pkg.ecosystem);
+    const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+    const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+    const key = `${normEco}:${pypiNormalizedName}`;
     const cached = metadataMap[key] || memoryCache.get(key);
     if (cached) {
-      if (cached.description && cached.description.trim()) {
-        return cached.description.trim();
+      if (cached.summary && cached.summary.trim()) {
+        const cleaned = cleanDescriptionText(cached.summary);
+        if (cleaned) return cleaned;
       }
-      return "Description unavailable";
+      if (cached.description && cached.description.trim()) {
+        const cleaned = cleanDescriptionText(cached.description);
+        if (cleaned) return cleaned;
+      }
+      if (cached.error) {
+        return "Description temporarily unavailable. Retry when connected.";
+      }
+      return "No description provided by the package publisher.";
     }
-    return "Description unavailable";
+    return "Loading package information…";
+  };
+
+  const getPackageDescription = (pkg: Package): string => {
+    const ecoStr = String(pkg.ecosystem);
+    const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+    const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+    const key = `${normEco}:${pypiNormalizedName}`;
+    const cached = metadataMap[key] || memoryCache.get(key);
+
+    if (cached) {
+      // Prioritize concise content/summary
+      if (cached.summary && cached.summary.trim()) {
+        const cleaned = cleanDescriptionText(cached.summary);
+        if (cleaned) return cleaned;
+      }
+      if (cached.description && cached.description.trim()) {
+        const cleaned = cleanDescriptionText(cached.description);
+        if (cleaned) return cleaned;
+      }
+      if (cached.error) {
+        return "Description temporarily unavailable. Retry when connected.";
+      }
+      return "No description provided by the package publisher.";
+    }
+
+    if ((pkg as any).summary && (pkg as any).summary.trim()) {
+      const cleaned = cleanDescriptionText((pkg as any).summary);
+      if (cleaned) return cleaned;
+    }
+    if (pkg.description && pkg.description !== "No description available" && pkg.description.trim()) {
+      const cleaned = cleanDescriptionText(pkg.description);
+      if (cleaned) return cleaned;
+    }
+
+    return "Loading package information…";
   };
 
   const handleRowClick = (pkg: Package) => {
@@ -1189,34 +1349,37 @@ export default function Packages() {
     setSelectedIds(new Set());
   };
 
-  const filteredPackages = packages?.filter((pkg: Package) => {
-    if (ecosystem !== "all" && ecosystem !== "venv" && pkg.ecosystem !== ecosystem) return false;
-    
-    const rawName = pkg.name ? pkg.name.trim().toLowerCase() : '';
-    const isPkgIgnored = pkg.status === 'ignored' || ignoredSet.has(rawName) || ignoredSet.has(rawName.replace(/[._]/g, '-'));
+  const filteredPackages = useMemo(() => {
+    if (!packages) return [];
+    return packages.filter((pkg: Package) => {
+      if (ecosystem !== "all" && ecosystem !== "venv" && pkg.ecosystem !== ecosystem) return false;
+      
+      const rawName = pkg.name ? pkg.name.trim().toLowerCase() : '';
+      const isPkgIgnored = pkg.status === 'ignored' || ignoredSet.has(rawName) || ignoredSet.has(rawName.replace(/[._]/g, '-'));
 
-    if (status !== "all") {
-      if (status === 'ignored') {
-        if (!isPkgIgnored) return false;
-      } else {
-        if (isPkgIgnored) return false;
-        if (pkg.status !== status) return false;
+      if (status !== "all") {
+        if (status === 'ignored') {
+          if (!isPkgIgnored) return false;
+        } else {
+          if (isPkgIgnored) return false;
+          if (pkg.status !== status) return false;
+        }
       }
-    }
-    if (search && !pkg.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const paginatedPackages = filteredPackages?.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+      if (search && !pkg.name.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    });
+  }, [packages, ecosystem, status, search, ignoredSet]);
 
   const totalPages = Math.ceil((filteredPackages?.length ?? 0) / itemsPerPage);
 
   const displayedPackages = useMemo(() => {
-    return paginatedPackages || [];
-  }, [paginatedPackages]);
+    return filteredPackages.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    );
+  }, [filteredPackages, currentPage, itemsPerPage]);
+
+  const paginatedPackages = displayedPackages;
 
   // Synchronize active package in details panel with latest package data
   const activeDetailPackage = useMemo(() => {
@@ -1225,44 +1388,127 @@ export default function Packages() {
     return found ? { ...selectedPackageForDetails, ...found } : selectedPackageForDetails;
   }, [selectedPackageForDetails, packages]);
 
-  // Asynchronously fetch descriptions for packages currently displayed on screen
+  // Fetch metadata specifically for activeDetailPackage when opened in the details dialog
+  useEffect(() => {
+    if (!activeDetailPackage) {
+      setDetailsMetaLoading(false);
+      return;
+    }
+
+    const pkg = activeDetailPackage;
+    if (pkg.description && pkg.description !== "No description available" && pkg.description.trim()) {
+      setDetailsMetaLoading(false);
+      return;
+    }
+
+    const ecoStr = String(pkg.ecosystem);
+    const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+    const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+    const metaKey = `${normEco}:${pypiNormalizedName}`;
+    const cached = metadataMap[metaKey] || memoryCache.get(metaKey);
+    if (cached && !cached.error) {
+      setDetailsMetaLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setDetailsMetaLoading(true);
+
+    fetchPackageMetadata(pkg.name, normEco)
+      .then((meta) => {
+        if (!isMounted) return;
+        setMetadataMap((prev) => ({ ...prev, [metaKey]: meta }));
+      })
+      .finally(() => {
+        if (isMounted) {
+          setDetailsMetaLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeDetailPackage?.id, activeDetailPackage?.name, activeDetailPackage?.ecosystem]);
+
+  // Asynchronously fetch descriptions for packages currently displayed on screen (bounded, deduplicated)
   useEffect(() => {
     if (!displayedPackages || displayedPackages.length === 0) return;
 
     let isMounted = true;
     const packagesToFetch = displayedPackages.filter((p: Package) => {
+      if ((p as any).summary && (p as any).summary.trim() && (p as any).summary !== "No description available") {
+        return false;
+      }
       if (p.description && p.description !== "No description available" && p.description.trim()) {
         return false;
       }
-      const normEco = (p.ecosystem === 'venv' || p.ecosystem === 'conda') ? 'pip' : p.ecosystem;
-      const key = `${normEco}:${p.name.toLowerCase()}`;
-      return !memoryCache.has(key);
+      const ecoStr = String(p.ecosystem);
+      const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+      const pypiNormalizedName = normEco === 'pip' ? p.name.toLowerCase().replace(/[._]/g, '-') : p.name.toLowerCase();
+      const key = `${normEco}:${pypiNormalizedName}`;
+      if (memoryCache.has(key)) return false;
+      if (inFlightKeys.has(key)) return false;
+      return true;
     });
 
     if (packagesToFetch.length === 0) return;
 
-    const BATCH_SIZE = 4;
-    const fetchQueue = async () => {
-      for (let i = 0; i < packagesToFetch.length; i += BATCH_SIZE) {
-        if (!isMounted) break;
-        const chunk = packagesToFetch.slice(i, i + BATCH_SIZE);
-        const results = await Promise.all(
-          chunk.map(async (pkg: Package) => {
-            const normEco = (pkg.ecosystem === 'venv' || pkg.ecosystem === 'conda') ? 'pip' : pkg.ecosystem;
-            const meta = await fetchPackageMetadata(pkg.name, normEco);
-            return { key: `${normEco}:${pkg.name.toLowerCase()}`, meta };
-          })
-        );
+    packagesToFetch.forEach((p: Package) => {
+      const ecoStr = String(p.ecosystem);
+      const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+      const pypiNormalizedName = normEco === 'pip' ? p.name.toLowerCase().replace(/[._]/g, '-') : p.name.toLowerCase();
+      inFlightKeys.add(`${normEco}:${pypiNormalizedName}`);
+    });
 
-        if (isMounted) {
-          setMetadataMap(prev => {
-            const next = { ...prev };
-            for (const r of results) {
-              next[r.key] = r.meta;
-            }
-            return next;
-          });
+    const fetchQueue = async () => {
+      try {
+        const api = (window as any).electronAPI;
+        if (api?.getBatchMetadata) {
+          const items = packagesToFetch.map((p: Package) => ({ name: p.name, ecosystem: p.ecosystem }));
+          const batchResults = await api.getBatchMetadata(items);
+          if (!isMounted) return;
+          for (const [key, meta] of Object.entries(batchResults as Record<string, PackageMetadata>)) {
+            memoryCache.set(key, meta);
+            inFlightKeys.delete(key);
+          }
+          saveMetadataCache();
+          setMetadataMap(prev => ({ ...prev, ...batchResults }));
+          return;
         }
+
+        const BATCH_SIZE = 4;
+        for (let i = 0; i < packagesToFetch.length; i += BATCH_SIZE) {
+          if (!isMounted) break;
+          const chunk = packagesToFetch.slice(i, i + BATCH_SIZE);
+          const results = await Promise.all(
+            chunk.map(async (pkg: Package) => {
+              const pkgEcoStr = String(pkg.ecosystem);
+              const normEco = (pkgEcoStr === 'venv' || pkgEcoStr === 'conda' || pkgEcoStr === 'python') ? 'pip' : pkgEcoStr;
+              const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+              const key = `${normEco}:${pypiNormalizedName}`;
+              const meta = await fetchPackageMetadata(pkg.name, normEco);
+              inFlightKeys.delete(key);
+              return { key, meta };
+            })
+          );
+
+          if (isMounted) {
+            setMetadataMap(prev => {
+              const next = { ...prev };
+              for (const r of results) {
+                next[r.key] = r.meta;
+              }
+              return next;
+            });
+          }
+        }
+      } finally {
+        packagesToFetch.forEach((p: Package) => {
+          const ecoStr = String(p.ecosystem);
+          const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+          const pypiNormalizedName = normEco === 'pip' ? p.name.toLowerCase().replace(/[._]/g, '-') : p.name.toLowerCase();
+          inFlightKeys.delete(`${normEco}:${pypiNormalizedName}`);
+        });
       }
     };
 
@@ -1466,57 +1712,89 @@ export default function Packages() {
           }
         }}
       >
-        <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden bg-white rounded-xl shadow-2xl border" style={{ borderColor: BORDER }}>
+        <DialogContent 
+          className="w-[min(720px,calc(100vw-32px))] max-w-[720px] p-0 gap-0 overflow-hidden bg-white rounded-xl shadow-2xl border box-border max-h-[min(90vh,calc(100vh-32px))] flex flex-col"
+          style={{ width: "min(720px, calc(100vw - 32px))", maxWidth: "720px", maxHeight: "min(90vh, calc(100vh - 32px))", borderColor: BORDER }}
+        >
           {activeDetailPackage && (() => {
             const pkg = activeDetailPackage;
-            const normEco = (pkg.ecosystem === 'venv' || pkg.ecosystem === 'conda') ? 'pip' : pkg.ecosystem;
-            const metaKey = `${normEco}:${pkg.name.toLowerCase()}`;
+            const ecoStr = String(pkg.ecosystem);
+            const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+            const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+            const metaKey = `${normEco}:${pypiNormalizedName}`;
             const cachedMeta = metadataMap[metaKey] || memoryCache.get(metaKey);
-            const isDescPending = !cachedMeta && (!pkg.description || pkg.description === "No description available");
+            const hasExistingDesc = !!(pkg.description && pkg.description !== "No description available" && pkg.description.trim());
+            const isDescPending = detailsMetaLoading || (!hasExistingDesc && !cachedMeta);
             const fullDesc = getPackageDescription(pkg);
+            const isFallback = fullDesc === "No description provided by the package publisher.";
+            const isErrorDesc = fullDesc === "Description temporarily unavailable. Retry when connected.";
             const hasUpdate = pkg.status !== 'up-to-date' && !!pkg.latestVersion && pkg.latestVersion !== pkg.installedVersion;
             const registryUrl = getRegistryUrl(pkg);
-            const homepageUrl = cachedMeta?.homepage || pkg.homepageUrl;
+            const homepageUrl = cachedMeta?.homepage || (pkg as any).homepageUrl;
             const isOperating = updatingId === pkg.id;
-            const envName = pkg.environmentName || environments?.find(e => e.id === pkg.environmentId)?.name || "Global";
+            const matchedEnv = environments?.find(e => e.id === pkg.environmentId || e.name === pkg.environmentName);
+            const envName = pkg.environmentName || matchedEnv?.name || "Global";
+            const envLocation = pkg.environmentPath || matchedEnv?.path || null;
             const isIgnored = pkg.status === 'ignored' || ignoredSet.has(pkg.name?.trim().toLowerCase()) || ignoredSet.has(pkg.name?.trim().toLowerCase().replace(/[._]/g, '-'));
 
             return (
-              <div className="flex flex-col max-h-[85vh]">
+              <div className="flex flex-col h-full max-h-[min(90vh,calc(100vh-32px))] w-full box-border overflow-hidden">
+                <DialogHeader className="sr-only">
+                  <DialogTitle>{pkg.name} Package Details</DialogTitle>
+                  <DialogDescription>Details and management for {pkg.name}</DialogDescription>
+                </DialogHeader>
+
                 {/* Header */}
-                <div className="p-6 pb-4 border-b bg-gray-50/50" style={{ borderColor: BORDER }}>
+                <div className="p-5 sm:p-6 pb-4 pr-12 border-b bg-gray-50/50 shrink-0 box-border" style={{ borderColor: BORDER }}>
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${ACCENT}15` }}>
-                        <PackageIcon className="w-6 h-6" style={{ color: ACCENT }} />
+                        <PackageIcon className="w-6 h-6 shrink-0" style={{ color: ACCENT }} />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-xl font-bold tracking-tight" style={{ color: HEADING }}>{pkg.name}</h2>
-                          <Badge variant="outline" className="uppercase font-mono text-[10px] tracking-wider px-2 py-0.5 bg-white" style={{ borderColor: BORDER, color: MUTED }}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-xl font-bold tracking-tight truncate max-w-full" style={{ color: HEADING }} title={pkg.name}>{pkg.name}</h2>
+                          <Badge variant="outline" className="uppercase font-mono text-[10px] tracking-wider px-2 py-0.5 bg-white shrink-0" style={{ borderColor: BORDER, color: MUTED }}>
                             {pkg.ecosystem}
                           </Badge>
                         </div>
-                        <p className="text-xs mt-0.5" style={{ color: MUTED }}>
-                          Installed in <span className="font-semibold text-gray-700">{envName}</span>
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                          <p className="text-xs truncate" style={{ color: MUTED }}>
+                            Installed in <span className="font-semibold text-gray-700">{envName}</span>
+                          </p>
+                          {envLocation && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 rounded hover:bg-gray-200/70 shrink-0 text-gray-400 hover:text-gray-700"
+                              title={`Copy location: ${envLocation}`}
+                              onClick={() => copyToClipboard(envLocation, "Environment location")}
+                            >
+                              {copiedField === "Environment location" ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Scrollable Content */}
-                <div className="p-6 space-y-4 overflow-y-auto">
+                <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 box-border min-h-0">
                   {/* Description Card */}
-                  <div className="rounded-lg p-3.5 border bg-gray-50/70" style={{ borderColor: `${BORDER}99` }}>
-                    <div className="flex items-center justify-between mb-1.5">
+                  <div className="rounded-lg p-3.5 border bg-gray-50/70 box-border" style={{ borderColor: `${BORDER}99` }}>
+                    <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Package Description</span>
                       {homepageUrl && (
                         <a 
                           href={homepageUrl} 
                           target="_blank" 
                           rel="noreferrer" 
-                          className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline"
+                          className="inline-flex items-center gap-1 text-[11px] font-medium hover:underline shrink-0"
                           style={{ color: ACCENT }}
                         >
                           <Globe className="w-3 h-3" />
@@ -1524,24 +1802,37 @@ export default function Packages() {
                         </a>
                       )}
                     </div>
-                    <p className="text-sm leading-relaxed break-words" style={{ color: isDescPending ? '#9CA3AF' : HEADING }}>
-                      {isDescPending ? "Retrieving package description..." : fullDesc}
-                    </p>
+                    {isDescPending ? (
+                      <div className="flex items-center gap-2 py-1 text-sm text-gray-500">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: ACCENT }} />
+                        <span>Loading package information…</span>
+                      </div>
+                    ) : isErrorDesc ? (
+                      <p className="text-sm leading-relaxed text-amber-700">
+                        Description temporarily unavailable. Retry when connected.
+                      </p>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto pr-1">
+                        <p className={cn("text-sm leading-relaxed break-words whitespace-pre-wrap", isFallback ? "text-gray-400 italic" : "text-gray-900")}>
+                          {fullDesc}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* Metadata Grid */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 box-border">
                     {/* Installed Version */}
-                    <div className="p-3 rounded-lg border bg-white" style={{ borderColor: BORDER }}>
+                    <div className="p-3 rounded-lg border bg-white box-border flex flex-col justify-between" style={{ borderColor: BORDER }}>
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 block mb-1">Installed Version</span>
-                      <div className="flex items-center justify-between">
-                        <code className="text-sm font-mono font-bold" style={{ color: HEADING }}>
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <code className="text-sm font-mono font-bold truncate" style={{ color: HEADING }} title={pkg.installedVersion || "Unknown"}>
                           {pkg.installedVersion || "Unknown"}
                         </code>
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-7 w-7 rounded-md"
+                          className="h-7 w-7 rounded-md shrink-0"
                           title="Copy installed version"
                           onClick={() => copyToClipboard(pkg.installedVersion, "Installed version")}
                         >
@@ -1551,22 +1842,26 @@ export default function Packages() {
                     </div>
 
                     {/* Latest Version */}
-                    <div className="p-3 rounded-lg border bg-white" style={{ borderColor: BORDER }}>
+                    <div className="p-3 rounded-lg border bg-white box-border flex flex-col justify-between" style={{ borderColor: BORDER }}>
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 block mb-1">Latest Available</span>
-                      <div className="flex items-center justify-between">
-                        <code className="text-sm font-mono font-bold" style={{ color: hasUpdate ? ACCENT : HEADING }}>
+                      <div className="flex items-center justify-between gap-2 min-w-0">
+                        <code className="text-sm font-mono font-bold truncate" style={{ color: hasUpdate ? ACCENT : HEADING }} title={pkg.latestVersion || pkg.installedVersion || "Unknown"}>
                           {pkg.latestVersion || pkg.installedVersion || "Unknown"}
                         </code>
-                        {hasUpdate && (
-                          <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: `${ACCENT}15`, color: ACCENT }}>
+                        {hasUpdate ? (
+                          <span className="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={{ backgroundColor: `${ACCENT}15`, color: ACCENT }}>
                             Update available
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 shrink-0">
+                            Up to date
                           </span>
                         )}
                       </div>
                     </div>
 
                     {/* Package Status */}
-                    <div className="p-3 rounded-lg border bg-white" style={{ borderColor: BORDER }}>
+                    <div className="p-3 rounded-lg border bg-white box-border flex flex-col justify-between" style={{ borderColor: BORDER }}>
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 block mb-1">Status</span>
                       <div className="mt-0.5">
                         {getStatusBadge(pkg.status, isIgnored)}
@@ -1574,13 +1869,26 @@ export default function Packages() {
                     </div>
 
                     {/* Environment Details */}
-                    <div className="p-3 rounded-lg border bg-white" style={{ borderColor: BORDER }}>
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 block mb-1">Environment</span>
-                      <div className="mt-0.5">
-                        <p className="text-xs font-semibold truncate" style={{ color: HEADING }}>{envName}</p>
-                        {pkg.environmentPath && (
-                          <p className="text-[10px] font-mono truncate text-gray-400 mt-0.5" title={pkg.environmentPath}>
-                            {pkg.environmentPath}
+                    <div className="p-3 rounded-lg border bg-white box-border flex flex-col justify-between min-w-0" style={{ borderColor: BORDER }}>
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 block">Environment</span>
+                        {envLocation && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 rounded hover:bg-gray-100 shrink-0 text-gray-400 hover:text-gray-700"
+                            title={`Copy location: ${envLocation}`}
+                            onClick={() => copyToClipboard(envLocation, "Environment location")}
+                          >
+                            {copiedField === "Environment location" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" style={{ color: MUTED }} />}
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-0.5 min-w-0">
+                        <p className="text-xs font-semibold truncate" style={{ color: HEADING }} title={envName}>{envName}</p>
+                        {envLocation && (
+                          <p className="text-[10px] font-mono truncate text-gray-400 mt-0.5" title={envLocation}>
+                            {envLocation}
                           </p>
                         )}
                       </div>
@@ -1589,20 +1897,20 @@ export default function Packages() {
 
                   {/* External Registry Link */}
                   {registryUrl && (
-                    <div className="flex items-center justify-between p-3 rounded-lg border border-dashed bg-gray-50/50" style={{ borderColor: BORDER }}>
-                      <div className="flex items-center gap-2">
-                        <ExternalLink className="w-4 h-4" style={{ color: ACCENT }} />
-                        <span className="text-xs font-medium text-gray-700">Official Package Registry</span>
+                    <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-dashed bg-gray-50/50 box-border flex-wrap sm:flex-nowrap min-w-0" style={{ borderColor: BORDER }}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ExternalLink className="w-4 h-4 shrink-0" style={{ color: ACCENT }} />
+                        <span className="text-xs font-medium text-gray-700 truncate">Official Package Registry</span>
                       </div>
                       <a 
                         href={registryUrl} 
                         target="_blank" 
                         rel="noreferrer" 
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline shrink-0 whitespace-nowrap"
                         style={{ color: ACCENT }}
                       >
                         <span>View on {String(pkg.ecosystem) === 'npm' || String(pkg.ecosystem) === 'pnpm' || String(pkg.ecosystem) === 'yarn' ? 'npm' : 'PyPI'}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5" />
+                        <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
                       </a>
                     </div>
                   )}
@@ -1610,7 +1918,7 @@ export default function Packages() {
                   {/* Version Check Feedback */}
                   {checkSingleStatus.status !== 'idle' && (
                     <div className={cn(
-                      "p-3 rounded-lg text-xs flex items-center gap-2 border",
+                      "p-3 rounded-lg text-xs flex items-center gap-2 border box-border",
                       checkSingleStatus.status === 'checking' && "bg-blue-50/70 border-blue-200 text-blue-700",
                       checkSingleStatus.status === 'success' && "bg-emerald-50/70 border-emerald-200 text-emerald-800",
                       checkSingleStatus.status === 'error' && "bg-red-50/70 border-red-200 text-red-700"
@@ -1618,13 +1926,13 @@ export default function Packages() {
                       {checkSingleStatus.status === 'checking' && <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />}
                       {checkSingleStatus.status === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
                       {checkSingleStatus.status === 'error' && <XCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />}
-                      <span>{checkSingleStatus.message}</span>
+                      <span className="break-words">{checkSingleStatus.message}</span>
                     </div>
                   )}
 
                   {/* Inline Confirmation: Update */}
                   {detailsConfirmAction === 'update' && (
-                    <div className="bg-indigo-50/90 border border-indigo-200 rounded-lg p-4 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="bg-indigo-50/90 border border-indigo-200 rounded-lg p-4 space-y-3 animate-in fade-in zoom-in-95 duration-150 box-border">
                       <div className="flex items-start gap-2.5">
                         <RefreshCw className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
                         <div>
@@ -1634,7 +1942,7 @@ export default function Packages() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center justify-end gap-2 pt-1">
+                      <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
                         <Button 
                           variant="outline" 
                           size="sm" 
@@ -1664,7 +1972,7 @@ export default function Packages() {
 
                   {/* Inline Confirmation: Uninstall */}
                   {detailsConfirmAction === 'uninstall' && (
-                    <div className="bg-red-50/90 border border-red-200 rounded-lg p-4 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="bg-red-50/90 border border-red-200 rounded-lg p-4 space-y-3 animate-in fade-in zoom-in-95 duration-150 box-border">
                       <div className="flex items-start gap-2.5">
                         <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
                         <div>
@@ -1674,7 +1982,7 @@ export default function Packages() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center justify-end gap-2 pt-1">
+                      <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
                         <Button 
                           variant="outline" 
                           size="sm" 
@@ -1703,14 +2011,14 @@ export default function Packages() {
                 </div>
 
                 {/* Footer Actions */}
-                <div className="p-4 px-6 border-t bg-gray-50 flex items-center justify-between shrink-0" style={{ borderColor: BORDER }}>
+                <div className="p-3 sm:p-4 px-4 sm:px-6 border-t bg-gray-50 flex items-center justify-between gap-2.5 flex-wrap shrink-0 box-border" style={{ borderColor: BORDER }}>
                   {/* Left: Copy utility actions */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <Button 
                       variant="outline" 
                       size="sm" 
                       onClick={() => copyToClipboard(pkg.name, "Package name")}
-                      className="h-8 px-2.5 text-xs flex items-center gap-1.5 bg-white"
+                      className="h-8 px-2.5 text-xs flex items-center gap-1.5 bg-white shrink-0"
                       style={{ borderColor: BORDER, color: MUTED }}
                     >
                       {copiedField === "Package name" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -1720,22 +2028,34 @@ export default function Packages() {
                       variant="outline" 
                       size="sm" 
                       onClick={() => copyToClipboard(pkg.installedVersion, "Installed version")}
-                      className="h-8 px-2.5 text-xs flex items-center gap-1.5 bg-white"
+                      className="h-8 px-2.5 text-xs flex items-center gap-1.5 bg-white shrink-0"
                       style={{ borderColor: BORDER, color: MUTED }}
                     >
                       {copiedField === "Installed version" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>Copy Version</span>
                     </Button>
+                    {envLocation && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => copyToClipboard(envLocation, "Environment location")}
+                        className="h-8 px-2.5 text-xs flex items-center gap-1.5 bg-white shrink-0"
+                        style={{ borderColor: BORDER, color: MUTED }}
+                      >
+                        {copiedField === "Environment location" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy Location</span>
+                      </Button>
+                    )}
                   </div>
 
                   {/* Right: Management actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Button 
                       variant="outline" 
                       size="sm" 
                       onClick={() => handleCheckSingleVersion(pkg)}
                       disabled={isCheckingSingle || isOperating}
-                      className="h-8 px-3 text-xs flex items-center gap-1.5 bg-white"
+                      className="h-8 px-3 text-xs flex items-center gap-1.5 bg-white shrink-0"
                       style={{ borderColor: BORDER, color: HEADING }}
                     >
                       <RefreshCw className={cn("w-3.5 h-3.5", isCheckingSingle && "animate-spin")} />
@@ -1747,7 +2067,7 @@ export default function Packages() {
                       size="sm" 
                       onClick={() => setDetailsConfirmAction(detailsConfirmAction === 'uninstall' ? null : 'uninstall')}
                       disabled={isOperating}
-                      className="h-8 px-3 text-xs flex items-center gap-1.5 text-red-600 border-red-200 hover:bg-red-50 bg-white"
+                      className="h-8 px-3 text-xs flex items-center gap-1.5 text-red-600 border-red-200 hover:bg-red-50 bg-white shrink-0"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Uninstall</span>
@@ -1759,11 +2079,11 @@ export default function Packages() {
                         size="sm" 
                         onClick={() => setDetailsConfirmAction(detailsConfirmAction === 'update' ? null : 'update')}
                         disabled={isOperating}
-                        className="h-8 px-3.5 text-xs flex items-center gap-1.5 text-white font-medium shadow-sm"
+                        className="h-8 px-3.5 text-xs flex items-center gap-1.5 text-white font-medium shadow-sm shrink-0"
                         style={{ backgroundColor: ACCENT }}
                       >
                         <Zap className="w-3.5 h-3.5" />
-                        <span>Update</span>
+                        <span>Update to {pkg.latestVersion}</span>
                       </Button>
                     )}
                   </div>
@@ -1933,12 +2253,12 @@ export default function Packages() {
                   </tr>
                 ) : (
                   paginatedPackages.map((pkg: Package) => {
-                    const normEco = (pkg.ecosystem === 'venv' || pkg.ecosystem === 'conda') ? 'pip' : pkg.ecosystem;
-                    const metaKey = `${normEco}:${pkg.name.toLowerCase()}`;
-                    const hasCachedMeta = memoryCache.has(metaKey) || !!metadataMap[metaKey];
-                    const isDescPending = !hasCachedMeta && (!pkg.description || pkg.description === "No description available");
-                    const desc = getPackageDescription(pkg);
+                    const ecoStr = String(pkg.ecosystem);
+                    const normEco = (ecoStr === 'venv' || ecoStr === 'conda' || ecoStr === 'python') ? 'pip' : ecoStr;
+                    const pypiNormalizedName = normEco === 'pip' ? pkg.name.toLowerCase().replace(/[._]/g, '-') : pkg.name.toLowerCase();
+                    const summary = getPackageSummary(pkg);
                     const isPkgIgnored = pkg.status === 'ignored' || ignoredSet.has(pkg.name?.trim().toLowerCase()) || ignoredSet.has(pkg.name?.trim().toLowerCase().replace(/[._]/g, '-'));
+                    const isDescPending = summary === "Loading package information…";
 
                     return (
                       <tr 
@@ -1967,11 +2287,11 @@ export default function Packages() {
                             <div className="min-w-0">
                               <span className="text-sm font-medium block truncate" style={{ color: HEADING }}>{pkg.name}</span>
                               <span 
-                                className="text-xs truncate max-w-[280px] block" 
-                                title={isDescPending ? "Loading description..." : desc} 
+                                className="text-xs truncate max-w-[340px] block" 
+                                title={summary} 
                                 style={{ color: isDescPending ? '#9CA3AF' : MUTED }}
                               >
-                                {isDescPending ? "Loading description..." : desc}
+                                {summary}
                               </span>
                             </div>
                           </div>

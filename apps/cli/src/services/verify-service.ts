@@ -143,9 +143,10 @@ export async function verifyProject(
 export function fastCheck(projectDir: string): { healthy: boolean; issues: string[] } {
   const issues: string[] = [];
 
-  const marker = path.join(projectDir, ".packageguard");
-  if (!fs.existsSync(marker)) {
-    issues.push("Missing .packageguard project configuration directory");
+  const marker = path.join(projectDir, ".packageguardian");
+  const legacyMarker = path.join(projectDir, ".packageguard");
+  if (!fs.existsSync(marker) && !fs.existsSync(legacyMarker)) {
+    issues.push("Missing .packageguardian project configuration directory");
   }
 
   const pj = path.join(projectDir, "package.json");

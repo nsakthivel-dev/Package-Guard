@@ -15,7 +15,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace PackageGuard
+namespace PackageGuardian
 {
     class Program
     {
@@ -26,11 +26,16 @@ namespace PackageGuard
             // Resolve Electron executable
             string[] electronCandidates = new string[]
             {
+                Path.Combine(exeDir, "..", "PackageGuardian.exe"),
+                Path.Combine(exeDir, "..", "Package Guardian.exe"),
+                Path.Combine(exeDir, "..", "package-guardian.exe"),
                 Path.Combine(exeDir, "..", "PackageGuard.exe"),
                 Path.Combine(exeDir, "..", "Package Guard.exe"),
                 Path.Combine(exeDir, "..", "package-guard.exe"),
                 Path.Combine(exeDir, "..", "node_modules", "electron", "dist", "electron.exe"),
                 Path.Combine(exeDir, "..", "..", "node_modules", "electron", "dist", "electron.exe"),
+                Path.Combine(exeDir, "PackageGuardian.exe"),
+                Path.Combine(exeDir, "Package Guardian.exe"),
                 Path.Combine(exeDir, "PackageGuard.exe"),
                 Path.Combine(exeDir, "Package Guard.exe")
             };
@@ -48,7 +53,7 @@ namespace PackageGuard
 
             if (electronExe == null)
             {
-                Console.Error.WriteLine("[pg] Error: Could not locate Package Guard runtime executable.");
+                Console.Error.WriteLine("[pg] Error: Could not locate Package Guardian runtime executable.");
                 return 1;
             }
 
@@ -73,7 +78,7 @@ namespace PackageGuard
 
             if (cliJs == null)
             {
-                Console.Error.WriteLine("[pg] Error: Could not locate Package Guard CLI script.");
+                Console.Error.WriteLine("[pg] Error: Could not locate Package Guardian CLI script.");
                 return 1;
             }
 
@@ -89,11 +94,12 @@ namespace PackageGuard
 
             // Add unpacked node_modules to NODE_PATH
             string unpackedModules = Path.GetFullPath(Path.Combine(exeDir, "..", "resources", "app.asar.unpacked", "node_modules"));
+            string prodModules = Path.GetFullPath(Path.Combine(exeDir, "..", "prod-modules"));
             string devModules = Path.GetFullPath(Path.Combine(exeDir, "..", "node_modules"));
             string parentDevModules = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "node_modules"));
             string existingNodePath = Environment.GetEnvironmentVariable("NODE_PATH") ?? "";
             
-            string combinedNodePath = unpackedModules + Path.PathSeparator + devModules + Path.PathSeparator + parentDevModules;
+            string combinedNodePath = unpackedModules + Path.PathSeparator + prodModules + Path.PathSeparator + devModules + Path.PathSeparator + parentDevModules;
             if (!string.IsNullOrEmpty(existingNodePath))
             {
                 combinedNodePath = combinedNodePath + Path.PathSeparator + existingNodePath;

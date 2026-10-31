@@ -8,7 +8,7 @@ export async function executeEnv(
 ): Promise<number> {
   const env = getEnvironmentDetails();
 
-  console.log("Package Guard Environment\n");
+  console.log("Package Guardian Environment\n");
   console.log(`OS:                 ${env.os}`);
   console.log(`Architecture:       ${env.arch}`);
   console.log(`Node.js Runtime:    ${env.nodeVersion}`);

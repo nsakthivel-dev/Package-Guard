@@ -23,7 +23,7 @@ export async function executeDiff(
     return outputError(
       "diff",
       "PROJECT_NOT_INITIALIZED",
-      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      "Package Guardian has not been initialized in this directory. Run 'pg init'.",
       3,
       jsonMode
     );

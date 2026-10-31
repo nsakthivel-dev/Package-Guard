@@ -35,11 +35,11 @@ export interface SafeWriteResult {
 }
 
 const WINDOWS_FORBIDDEN_ZONES: ReadonlyArray<{ label: string; pattern: string }> = [
-  { label: 'Program Files',       pattern: 'program files' },
+  { label: 'Program Files', pattern: 'program files' },
   { label: 'Program Files (x86)', pattern: 'program files (x86)' },
-  { label: 'Windows',             pattern: 'windows' },
-  { label: 'System32',            pattern: 'system32' },
-  { label: 'SysWOW64',            pattern: 'syswow64' },
+  { label: 'Windows', pattern: 'windows' },
+  { label: 'System32', pattern: 'system32' },
+  { label: 'SysWOW64', pattern: 'syswow64' },
 ];
 
 export function assertSafeWritePath(targetPath: string): void {
@@ -72,7 +72,7 @@ export function assertSafeWritePath(targetPath: string): void {
       ) {
         throw new PathValidationError(
           `Path validation failed: "${resolved}" is inside the restricted "${zone.label}" directory. ` +
-          `PackageGuard must never write to system-protected locations.`,
+          `Package Guardian must never write to system-protected locations.`,
           resolved,
           zone.label,
         );
@@ -105,13 +105,13 @@ export function assertInsideDirectory(targetPath: string, allowedRoot: string): 
   }
 
   const cleanTarget = path.normalize(targetPath);
-  const cleanRoot   = path.normalize(allowedRoot);
+  const cleanRoot = path.normalize(allowedRoot);
 
   const resolvedTarget = path.resolve(cleanTarget);
-  const resolvedRoot   = path.resolve(cleanRoot);
+  const resolvedRoot = path.resolve(cleanRoot);
 
   const normTarget = process.platform === 'win32' ? resolvedTarget.toLowerCase() : resolvedTarget;
-  const normRoot   = process.platform === 'win32' ? resolvedRoot.toLowerCase()   : resolvedRoot;
+  const normRoot = process.platform === 'win32' ? resolvedRoot.toLowerCase() : resolvedRoot;
 
   if (normTarget !== normRoot && !normTarget.startsWith(normRoot + path.sep)) {
     throw new PathValidationError(
@@ -190,10 +190,42 @@ export function validateProjectRoot(dir: string): { valid: boolean; reason?: str
   return { valid: true };
 }
 
-export const LOCAL_PG_DIR_NAME = '.packageguard' as const;
+export const LOCAL_PG_DIR_NAME = '.packageguardian' as const;
+export const LEGACY_LOCAL_PG_DIR_NAME = '.packageguard' as const;
 
 export function getLocalPgDir(projectRoot: string): string {
-  return path.join(path.resolve(projectRoot), LOCAL_PG_DIR_NAME);
+  if (!projectRoot || typeof projectRoot !== 'string' || projectRoot.trim().length === 0) {
+    throw new PathValidationError(
+      'Path validation failed: projectRoot is empty or not a string.',
+      String(projectRoot),
+      'empty-path',
+    );
+  }
+
+  if (projectRoot.includes('\0')) {
+    throw new PathValidationError(
+      'Path validation failed: projectRoot contains null bytes.',
+      projectRoot,
+      'null-byte',
+    );
+  }
+
+  const sanitizedRoot = projectRoot.replace(/\0/g, '').trim();
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
+  const resolved = path.resolve(sanitizedRoot);
+  assertSafeWritePath(resolved);
+
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
+  const primary = path.join(resolved, LOCAL_PG_DIR_NAME);
+  assertInsideDirectory(primary, resolved);
+  if (fs.existsSync(primary)) return primary;
+
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
+  const legacy = path.join(resolved, LEGACY_LOCAL_PG_DIR_NAME);
+  assertInsideDirectory(legacy, resolved);
+  if (fs.existsSync(legacy)) return legacy;
+
+  return primary;
 }
 
 export function ensureLocalPgDir(

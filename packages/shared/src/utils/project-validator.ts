@@ -12,7 +12,7 @@ export interface ExistingProjectSummary {
 }
 
 /**
- * Validates a project name according to PackageGuard naming rules:
+ * Validates a project name according to Package Guardian naming rules:
  * - Trims leading and trailing whitespace.
  * - Rejects empty or whitespace-only names.
  * - Rejects invalid characters (path separators, filesystem-forbidden characters, control characters).

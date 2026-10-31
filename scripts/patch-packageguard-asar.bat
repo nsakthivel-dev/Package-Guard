@@ -5,7 +5,8 @@ set ASAR=%ROOT%\release\win-unpacked\resources\app.asar
 set ASAR_NEW=%ROOT%\release\win-unpacked\resources\app.asar.new
 set ASAR_JS=%ROOT%\node_modules\.pnpm\@electron+asar@3.4.1\node_modules\@electron\asar\bin\asar.js
 
-echo Closing PackageGuard if running...
+echo Closing Package Guardian / PackageGuard if running...
+taskkill /IM PackageGuardian.exe /F >nul 2>&1
 taskkill /IM PackageGuard.exe /F >nul 2>&1
 timeout /t 2 /nobreak >nul
 
@@ -27,8 +28,11 @@ copy /Y "%ROOT%\apps\desktop\main\handlers\projectEnvironmentHandler.js" "%TMP%\
 del /f "%ASAR%" 2>nul
 node "%ASAR_JS%" pack "%TMP%\extracted" "%ASAR%"
 
+if exist "C:\Program Files\Package Guardian\resources\app.asar" (
+  copy /Y "%ASAR%" "C:\Program Files\Package Guardian\resources\app.asar" >nul 2>&1
+)
 if exist "C:\Program Files\Package Guard\PackageGuard\resources\app.asar" (
   copy /Y "%ASAR%" "C:\Program Files\Package Guard\PackageGuard\resources\app.asar" >nul 2>&1
 )
 
-echo Done. Run: release\win-unpacked\PackageGuard.exe
+echo Done. Run: release\win-unpacked\PackageGuardian.exe

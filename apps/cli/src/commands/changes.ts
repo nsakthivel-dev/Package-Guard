@@ -18,7 +18,7 @@ export async function executeChanges(
     return outputError(
       "changes",
       "PROJECT_NOT_INITIALIZED",
-      "Package Guard has not been initialized in this directory. Run 'pg init'.",
+      "Package Guardian has not been initialized in this directory. Run 'pg init'.",
       3,
       jsonMode
     );

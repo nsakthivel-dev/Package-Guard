@@ -38,7 +38,7 @@ export async function executeInit(
       },
       jsonMode,
       () => {
-        console.log("Package Guard is already initialized for this project.\n");
+        console.log("Package Guardian is already initialized for this project.\n");
         console.log(`Project: ${result.project.name}`);
         console.log(`Path: ${result.project.path}`);
         console.log(`Package Manager: ${result.packageManager || "npm"}`);
@@ -109,7 +109,7 @@ export async function executeInit(
     },
     jsonMode,
     () => {
-      console.log("Package Guard initialized\n");
+      console.log("Package Guardian initialized\n");
       console.log(`Project: ${result.project.name}`);
       console.log(`Path: ${result.project.path}`);
       console.log(`Package Manager: ${result.packageManager}`);

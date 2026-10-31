@@ -41,7 +41,7 @@ export default function PrivacyPolicyPage() {
           <div className="flex items-center gap-2 mb-1">
             <ShieldCheck className="w-6 h-6 text-primary shrink-0" />
             <h1 className="text-[28px] font-bold text-on-surface leading-tight">
-              Package Guard Privacy Policy
+              Package Guardian Privacy Policy
             </h1>
           </div>
           <p className="text-body-md text-on-surface-variant">
@@ -66,13 +66,13 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard is a Windows desktop application designed to help developers inspect and manage software dependency state through a graphical interface and the <code className="font-mono bg-surface-container-low px-1.5 py-0.5 rounded text-[13px] text-primary font-semibold">pg</code> command-line tool.
+                Package Guardian is a Windows desktop application designed to help developers inspect and manage software dependency state through a graphical interface and the <code className="font-mono bg-surface-container-low px-1.5 py-0.5 rounded text-[13px] text-primary font-semibold">pg</code> command-line tool.
               </p>
               <p>
-                This Privacy Policy explains how Package Guard handles information when you use the application.
+                This Privacy Policy explains how Package Guardian handles information when you use the application.
               </p>
               <p>
-                Our design principle is local-first operation. Application data is stored locally on your computer, and Package Guard does not intentionally collect personal information or transmit application usage data to us.
+                Our design principle is local-first operation. Application data is stored locally on your computer, and Package Guardian does not intentionally collect personal information or transmit application usage data to us.
               </p>
             </div>
           </section>
@@ -84,7 +84,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard does not intentionally collect or transmit personal information, usage analytics, telemetry, or tracking data to its developer.
+                Package Guardian does not intentionally collect or transmit personal information, usage analytics, telemetry, or tracking data to its developer.
               </p>
               <p>
                 The application may store information locally on your computer that is necessary for its functionality, including:
@@ -96,7 +96,7 @@ export default function PrivacyPolicyPage() {
                 <li>Other technical data required by the application's features.</li>
               </ul>
               <p>
-                This information is stored locally and is not intentionally transmitted to the developer as part of Package Guard's normal operation.
+                This information is stored locally and is not intentionally transmitted to the developer as part of Package Guardian's normal operation.
               </p>
               <p>
                 Information contained in your software projects or dependency metadata may include personal or confidential information. You are responsible for reviewing such information before sharing it with other parties.
@@ -111,19 +111,19 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard uses a local SQLite database for supported application data and history.
+                Package Guardian uses a local SQLite database for supported application data and history.
               </p>
               <p>
                 Application data is stored on your computer in the application's designated local data directory. The exact storage location may depend on the installation and configuration.
               </p>
               <p>
-                Package Guard does not operate a developer-hosted cloud database for storing your application history.
+                Package Guardian does not operate a developer-hosted cloud database for storing your application history.
               </p>
               <p>
                 Access to locally stored information is subject to your Windows account permissions and the security of your device. You can manage locally stored application data through the available application features or documented data-management instructions.
               </p>
               <p>
-                Uninstalling Package Guard may not automatically delete every user-data file. Back up any information you want to retain before uninstalling or modifying application data.
+                Uninstalling Package Guardian may not automatically delete every user-data file. Back up any information you want to retain before uninstalling or modifying application data.
               </p>
             </div>
           </section>
@@ -135,7 +135,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard may connect to external package registries or related services when you perform package-related operations.
+                Package Guardian may connect to external package registries or related services when you perform package-related operations.
               </p>
               <p>
                 These connections may be used to retrieve package metadata, dependency information, or other information required by the requested operation.
@@ -144,7 +144,7 @@ export default function PrivacyPolicyPage() {
                 External registries and services operate under their own privacy policies and terms. When your computer connects to those services, they may receive technical information associated with the connection, such as your IP address, request details, or user-agent information, depending on the service and connection method.
               </p>
               <p>
-                Package Guard does not control the data practices of external registries. Review the applicable service's privacy policy for details about its handling of connection data.
+                Package Guardian does not control the data practices of external registries. Review the applicable service's privacy policy for details about its handling of connection data.
               </p>
             </div>
           </section>
@@ -156,13 +156,13 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard is designed without built-in usage analytics, behavioral tracking, or advertising telemetry.
+                Package Guardian is designed without built-in usage analytics, behavioral tracking, or advertising telemetry.
               </p>
               <p>
                 We do not intentionally transmit application usage statistics, dependency history, or local database contents to the developer for analytics or advertising purposes.
               </p>
               <p>
-                This statement describes Package Guard's intended behavior and does not cover telemetry that may be independently provided by Windows, external package registries, or other software installed on your computer.
+                This statement describes Package Guardian's intended behavior and does not cover telemetry that may be independently provided by Windows, external package registries, or other software installed on your computer.
               </p>
             </div>
           </section>
@@ -174,13 +174,13 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard may interact with package registries or other external services required by supported functionality.
+                Package Guardian may interact with package registries or other external services required by supported functionality.
               </p>
               <p>
-                Those services are independent of the Package Guard developer. Their availability, security, data collection, and privacy practices are governed by their own policies.
+                Those services are independent of the Package Guardian developer. Their availability, security, data collection, and privacy practices are governed by their own policies.
               </p>
               <p>
-                Package Guard does not claim to control or guarantee the privacy practices of third-party services.
+                Package Guardian does not claim to control or guarantee the privacy practices of third-party services.
               </p>
             </div>
           </section>
@@ -192,7 +192,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard is designed to keep its application data on the user's computer.
+                Package Guardian is designed to keep its application data on the user's computer.
               </p>
               <p>
                 You are responsible for maintaining appropriate security on your device, including operating-system updates, account protection, backups, and access permissions.
@@ -210,7 +210,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Package Guard is a developer-oriented utility and is not designed to collect personal information from children. The application does not intentionally collect personal information from any user.
+                Package Guardian is a developer-oriented utility and is not designed to collect personal information from children. The application does not intentionally collect personal information from any user.
               </p>
             </div>
           </section>
@@ -222,7 +222,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                Because Package Guard does not intentionally collect personal information for the developer's own use, it does not maintain a developer-hosted account or personal-data portal for this purpose.
+                Because Package Guardian does not intentionally collect personal information for the developer's own use, it does not maintain a developer-hosted account or personal-data portal for this purpose.
               </p>
               <p>
                 You can control your use of the application, manage relevant local files, and choose whether to perform operations that connect to external package registries.
@@ -240,7 +240,7 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <p>
-                This Privacy Policy may be updated when Package Guard's functionality or data practices change.
+                This Privacy Policy may be updated when Package Guardian's functionality or data practices change.
               </p>
               <p>
                 The revised policy will include an updated effective date. Users should review this policy periodically for changes.
@@ -255,12 +255,12 @@ export default function PrivacyPolicyPage() {
             </h2>
             <div className="space-y-3 text-[14px] text-on-surface-variant leading-relaxed">
               <div className="space-y-1.5 pl-1">
-                <p><span className="font-semibold text-on-surface">Application:</span> Package Guard</p>
+                <p><span className="font-semibold text-on-surface">Application:</span> Package Guardian</p>
                 <p><span className="font-semibold text-on-surface">Developer / Publisher:</span> Sakthivel N</p>
                 <p><span className="font-semibold text-on-surface">Support email:</span> <span className="font-mono text-primary">nsakthiveldev@gmail.com</span></p>
               </div>
               <p className="pt-2">
-                This policy applies to Package Guard's own data practices and should be updated if future versions introduce analytics, account services, cloud storage, or other data collection.
+                This policy applies to Package Guardian's own data practices and should be updated if future versions introduce analytics, account services, cloud storage, or other data collection.
               </p>
             </div>
           </section>

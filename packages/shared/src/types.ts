@@ -120,7 +120,7 @@ export interface RepairReport {
   failed: number;
 }
 
-export interface PackageGuardConfig {
+export interface PackageGuardianConfig {
   projectName: string;
   projectPath: string;
   databasePath: string;
@@ -128,6 +128,7 @@ export interface PackageGuardConfig {
   communication: string;
   autoSync: boolean;
 }
+export type PackageGuardConfig = PackageGuardianConfig;
 
 export interface HistoryItem {
   id: string;

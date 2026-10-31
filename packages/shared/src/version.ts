@@ -1,2 +1,3 @@
-export const PACKAGE_GUARD_VERSION = "1.0.0";
+export const PACKAGE_GUARDIAN_VERSION = "1.0.0";
+export const PACKAGE_GUARD_VERSION = PACKAGE_GUARDIAN_VERSION;
 export const VERSION = "1.0.0";

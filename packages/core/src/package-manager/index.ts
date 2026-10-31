@@ -13,7 +13,7 @@ export interface PMDetectionResult {
 export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
   const r = await detectPackageManagerVerbose(projectPath);
   for (const w of r.warnings) {
-    console.warn(`[package-guard] ${w}`);
+    console.warn(`[package-guardian] ${w}`);
   }
   return r.packageManager;
 }

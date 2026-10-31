@@ -1,10 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
+const req = createRequire(path.join(rootDir, "packages", "shared", "package.json"));
 
 const prodModulesDir = path.join(rootDir, "prod-modules");
 fs.rmSync(prodModulesDir, { recursive: true, force: true });
@@ -15,12 +17,29 @@ function resolveModuleDir(pkgName) {
   if (fs.existsSync(localPath)) return localPath;
   const parentPath = path.join(rootDir, "..", "node_modules", pkgName);
   if (fs.existsSync(parentPath)) return parentPath;
+
+  try {
+    const pkgJson = req.resolve(pkgName + "/package.json");
+    if (fs.existsSync(pkgJson)) return path.dirname(pkgJson);
+  } catch {}
+
+  const pnpmDir = path.join(rootDir, "node_modules", ".pnpm");
+  if (fs.existsSync(pnpmDir)) {
+    const entries = fs.readdirSync(pnpmDir);
+    for (const entry of entries) {
+      if (entry.startsWith(pkgName + "@") || entry.includes("+" + pkgName + "@")) {
+        const nested = path.join(pnpmDir, entry, "node_modules", pkgName);
+        if (fs.existsSync(nested)) return nested;
+      }
+    }
+  }
+
   return null;
 }
 
-// 1. Prepare @package-guard/shared and @packageguard/shared
+// 1. Prepare shared package for all scopes
 const sharedSrc = path.join(rootDir, "packages", "shared");
-for (const scopeName of ["@package-guard", "@packageguard"]) {
+for (const scopeName of ["@package-guardian", "@packageguardian", "@package-guard", "@packageguard"]) {
   const dest = path.join(prodModulesDir, scopeName, "shared");
   fs.mkdirSync(dest, { recursive: true });
   fs.cpSync(path.join(sharedSrc, "dist"), path.join(dest, "dist"), { recursive: true, dereference: true });
@@ -34,9 +53,11 @@ for (const pkg of ["better-sqlite3-electron", "better-sqlite3", "bindings", "fil
     fs.cpSync(src, path.join(prodModulesDir, pkg), { recursive: true, dereference: true });
     console.log(`Copied ${pkg} from ${src}`);
   } else {
-    console.warn(`Warning: Could not locate ${pkg}`);
+    // better-sqlite3-electron is optional if better-sqlite3 is present
+    if (pkg !== "better-sqlite3-electron") {
+      console.warn(`Warning: Could not locate ${pkg}`);
+    }
   }
 }
 
 console.log("prod-modules prepared successfully at:", prodModulesDir);
-

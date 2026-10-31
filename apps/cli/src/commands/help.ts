@@ -10,7 +10,7 @@ export function executeHelp(args: string[] = [], isJson: boolean = false): numbe
           outputSuccess({
             command: "init",
             syntax: "pg init [name] [--project <path>]",
-            description: "Initializes Package Guard for the current directory. Automatically detects project type, package manager, manifests, lockfiles, creates .packageguard/PACKAGEGUARD.md, and maintains AGENTS.md for AI coding agents.",
+            description: "Initializes Package Guardian for the current directory. Automatically detects project type, package manager, manifests, lockfiles, creates .packageguard/PACKAGEGUARD.md, and maintains AGENTS.md for AI coding agents.",
             options: [
               { flag: "--project, -p <path>", description: "Target specific project directory instead of cwd" },
               { flag: "--json, -j", description: "Output machine-readable JSON format" }
@@ -20,13 +20,13 @@ export function executeHelp(args: string[] = [], isJson: boolean = false): numbe
           });
           return 0;
         }
-        console.log(`Package Guard Help: init
+        console.log(`Package Guardian Help: init
 
 Syntax:
   pg init [name]
 
 Description:
-  Initializes Package Guard for the current directory. Automatically detects project type,
+  Initializes Package Guardian for the current directory. Automatically detects project type,
   package manager (npm, pnpm, yarn, bun, pip), manifests, lockfiles, and registers tracking
   metadata in SQLite. Performs an initial baseline scan, creates .packageguard/PACKAGEGUARD.md,
   and maintains AGENTS.md for AI coding agents.
@@ -46,7 +46,7 @@ Safety:
         return 0;
 
       case "scan":
-        console.log(`Package Guard Help: scan
+        console.log(`Package Guardian Help: scan
 
 Syntax:
   pg scan [options]
@@ -72,7 +72,7 @@ Safety:
         return 0;
 
       case "update":
-        console.log(`Package Guard Help: update
+        console.log(`Package Guardian Help: update
 
 Syntax:
   pg update <package> [options]
@@ -80,7 +80,7 @@ Syntax:
 
 Description:
   Safely updates packages using the detected package manager. Before making changes,
-  Package Guard automatically generates an isolated safety snapshot. After the update,
+  Package Guardian automatically generates an isolated safety snapshot. After the update,
   it runs a scan and verification check to validate dependency integrity.
 
 Options:
@@ -103,7 +103,7 @@ Safety:
         return 0;
 
       case "snapshot":
-        console.log(`Package Guard Help: snapshot
+        console.log(`Package Guardian Help: snapshot
 
 Syntax:
   pg snapshot [create] [name]
@@ -133,7 +133,7 @@ Safety:
         return 0;
 
       case "doctor":
-        console.log(`Package Guard Help: doctor
+        console.log(`Package Guardian Help: doctor
 
 Syntax:
   pg doctor
@@ -142,7 +142,7 @@ Description:
   Executes a comprehensive health check inspecting all 11 system components:
   1. CLI environment
   2. Electron desktop connection
-  3. Named Pipe IPC (\\\\.\\pipe\\PackageGuard)
+  3. Named Pipe IPC (\\\\.\\pipe\\PackageGuardian)
   4. SQLite engine
   5. Database integrity & schema
   6. Project registration
@@ -161,13 +161,13 @@ Safety:
         return 0;
 
       case "repair":
-        console.log(`Package Guard Help: repair
+        console.log(`Package Guardian Help: repair
 
 Syntax:
   pg repair [packages|database|config]
 
 Description:
-  Performs safe, conservative repairs on internal Package Guard components:
+  Performs safe, conservative repairs on internal Package Guardian components:
   - packages: Reinstalls and reconciles node_modules via detected package manager
   - database: Runs integrity checks, index optimization, and vacuuming
   - config:   Restores default configurations and project markers
@@ -184,7 +184,7 @@ Safety:
 
       case "security":
       case "audit":
-        console.log(`Package Guard Help: security / audit
+        console.log(`Package Guardian Help: security / audit
 
 Syntax:
   pg audit
@@ -200,7 +200,7 @@ Description:
         return 0;
 
       case "clean":
-        console.log(`Package Guard Help: clean
+        console.log(`Package Guardian Help: clean
 
 Syntax:
   pg clean <cache|snapshots|logs|all>
@@ -212,7 +212,7 @@ Description:
         return 0;
 
       case "service":
-        console.log(`Package Guard Help: service
+        console.log(`Package Guardian Help: service
 
 Syntax:
   pg service <status|restart>
@@ -237,9 +237,9 @@ Description:
 
   if (isJson) {
     outputSuccess({
-      name: "PackageGuard CLI",
+      name: "PackageGuardian CLI",
       version: "1.0.0",
-      description: "PackageGuard authoritative command hierarchy for developers and AI coding agents",
+      description: "PackageGuardian authoritative command hierarchy for developers and AI coding agents",
       globalOptions: [
         { flag: "--json, -j", description: "Output machine-readable JSON format" },
         { flag: "--project, -p <path>", description: "Target specific project directory instead of cwd" },
@@ -249,8 +249,8 @@ Description:
         {
           name: "Project Management",
           commands: [
-            { name: "init", syntax: "pg init [name]", description: "Initialize Package Guard for the current directory" },
-            { name: "remove", syntax: "pg remove", description: "Untrack project from Package Guard (preserves project files)" },
+            { name: "init", syntax: "pg init [name]", description: "Initialize Package Guardian for the current directory" },
+            { name: "remove", syntax: "pg remove", description: "Untrack project from Package Guardian (preserves project files)" },
             { name: "projects", syntax: "pg projects", description: "List all tracked projects" },
             { name: "project current", syntax: "pg project current", description: "Display active project info" },
             { name: "project switch", syntax: "pg project switch <name>", description: "Switch active project context" },
@@ -353,7 +353,7 @@ Description:
     return 0;
   }
 
-  console.log(`Package Guard CLI — Authoritative Command Hierarchy
+  console.log(`Package Guardian CLI — Authoritative Command Hierarchy
 
 Usage:
   pg <command> [subcommand] [options]
@@ -364,8 +364,8 @@ Global Options:
   --yes, -y, --force       Bypass interactive confirmation prompts
 
 Project Management:
-  init                     Initialize Package Guard for the current directory
-  remove                   Untrack project from Package Guard (preserves project files)
+  init                     Initialize Package Guardian for the current directory
+  remove                   Untrack project from Package Guardian (preserves project files)
   projects                 List all tracked projects
   project current          Display active project info
   project switch <name>    Switch active project context

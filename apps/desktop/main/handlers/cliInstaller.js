@@ -1,6 +1,6 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * Package Guard — CLI Installer Handler
+ * Package Guardian — CLI Installer Handler
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * Manages system registration for the `pg` command-line tool so developers
@@ -8,7 +8,7 @@
  *
  * On Windows:
  *   Installs `pg.cmd` shim into %LOCALAPPDATA%\Microsoft\WindowsApps (in PATH by default)
- *   and/or %APPDATA%\Package Guard\bin.
+ *   and/or %APPDATA%\PackageGuardian\bin.
  *
  * On macOS / Linux:
  *   Installs `pg` shim into ~/.local/bin or /usr/local/bin.

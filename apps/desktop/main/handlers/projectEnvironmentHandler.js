@@ -831,7 +831,7 @@ async function renameProjectEnvironment(projectId, newName) {
 
   // 2. Update .packageguard/config.json in project path if it exists
   try {
-    const configPath = path.join(project.path, '.packageguard', 'config.json');
+    const configPath = fs.existsSync(path.join(project.path, '.packageguardian', 'config.json')) ? path.join(project.path, '.packageguardian', 'config.json') : path.join(project.path, '.packageguard', 'config.json');
     if (fs.existsSync(configPath)) {
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       cfg.name = trimmedNewName;
@@ -881,10 +881,10 @@ async function renameProjectEnvironment(projectId, newName) {
 }
 
 /**
- * Remove a project environment from tracking in Package Guard.
+ * Remove a project environment from tracking in Package Guardian.
  *
  * SAFETY GUARANTEE:
- * This removes ONLY Package Guard tracking records from SQLite and local GUI state.
+ * This removes ONLY Package Guardian tracking records from SQLite and local GUI state.
  * It NEVER deletes, moves, or modifies the actual project directory, source code,
  * virtual environments, dependencies, lockfiles, or files on disk.
  *

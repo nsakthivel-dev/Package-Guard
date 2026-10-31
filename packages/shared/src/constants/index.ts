@@ -1,5 +1,5 @@
 /**
- * PackageGuard shared constants.
+ * Package Guardian shared constants.
  */
 
 export const LOCKFILE_CANDIDATES: ReadonlyArray<[string, 'npm' | 'pnpm' | 'yarn' | 'bun']> = [
@@ -11,7 +11,8 @@ export const LOCKFILE_CANDIDATES: ReadonlyArray<[string, 'npm' | 'pnpm' | 'yarn'
 
 export const DEFAULT_DB_META = { version: 1 } as const;
 
-export const DEFAULT_NOTIFY_SOCKET_WIN = '\\\\.\\pipe\\package-guard-notify';
+export const DEFAULT_NOTIFY_SOCKET_WIN = '\\\\.\\pipe\\package-guardian-notify';
+export const LEGACY_NOTIFY_SOCKET_WIN = '\\\\.\\pipe\\package-guard-notify';
 
 export const VENV_DIRS_CHECK = ['.venv', 'venv', 'env', '.env', '__venv__'] as const;
 

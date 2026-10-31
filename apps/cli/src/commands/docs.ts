@@ -1,5 +1,5 @@
 export function executeDocs(): number {
-  console.log(`Package Guard Documentation & Command Manual
+  console.log(`Package Guardian Documentation & Command Manual
 
 Online Resources:
   - Repository:         https://github.com/packageguard/packageguard

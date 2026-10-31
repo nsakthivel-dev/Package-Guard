@@ -83,7 +83,7 @@ export function PermissionDialog() {
             Background Scanning
           </h2>
           <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400 max-w-[320px] mb-6">
-            Allow PackageGuard to stay active in the system tray and scan your environments even when this window is closed.
+            Allow Package Guardian to stay active in the system tray and scan your environments even when this window is closed.
           </p>
 
           {/* ── Feature highlights ─────────────────────────────────────── */}

@@ -11,7 +11,7 @@ export async function executeBackup(
 
   if (sub === "list") {
     const backups = getAllBackups(db);
-    console.log("Package Guard System Backups:\n");
+    console.log("Package Guardian System Backups:\n");
     if (backups.length === 0) {
       console.log("No system backups found. Run 'pg backup' to create one.");
       return 0;
@@ -50,7 +50,7 @@ export async function executeBackup(
 
   // Default: create a new system backup
   const desc = args.length > 0 && sub !== "create" ? args.join(" ") : undefined;
-  console.log("Creating Package Guard system backup...");
+  console.log("Creating Package Guardian system backup...");
 
   try {
     const backup = createSystemBackup(db, desc);

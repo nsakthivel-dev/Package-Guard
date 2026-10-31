@@ -43,7 +43,7 @@ export function installCliShim(): { success: boolean; installedAt: string; messa
   const { preferredDir, shimPath, isWin } = getTargetShimPaths();
   const cliScript = getCliScriptPath();
   const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-  const programCliShim = path.join(localAppData, "Programs", "PackageGuard", "cli", isWin ? "pg.cmd" : "pg");
+  const programCliShim = path.join(localAppData, "Programs", "PackageGuardian", "cli", isWin ? "pg.cmd" : "pg");
 
   try {
     if (isWin) {
@@ -77,6 +77,8 @@ export function uninstallCliShim(): { success: boolean; uninstalledPaths: string
   const candidates = [
     path.join(localAppData, "Microsoft", "WindowsApps", "pg.cmd"),
     path.join(localAppData, "Microsoft", "WindowsApps", "pg.bat"),
+    path.join(localAppData, "Programs", "PackageGuardian", "cli", "pg.cmd"),
+    path.join(localAppData, "Programs", "PackageGuardian", "cli", "pg.bat"),
     path.join(localAppData, "Programs", "PackageGuard", "cli", "pg.cmd"),
     path.join(localAppData, "Programs", "PackageGuard", "cli", "pg.bat"),
     path.join(getAppDataDir(), "bin", isWin ? "pg.cmd" : "pg"),

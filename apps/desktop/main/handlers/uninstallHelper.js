@@ -1,6 +1,6 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * Package Guard — Uninstall Helper
+ * Package Guardian — Uninstall Helper
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * Handles runtime cleanup when the user chooses "Full removal" from within the
@@ -13,7 +13,7 @@
  *                         left intact so data survives a reinstall.
  *
  *   Option 2 (full wipe): This module deletes the runtime data tree from
- *                         AppData\Roaming\Package Guard\ first, then the
+ *                         AppData\Roaming\PackageGuardian\ first, then the
  *                         Electron process quits. NSIS finalises the removal.
  *
  * The NSIS script (build/installer/uninstall-helper.nsh) also performs its own
@@ -83,7 +83,7 @@ function removeFile(filePath) {
  * All operations are non-fatal — partial failures are collected and returned
  * so the caller can log them, but the uninstall process continues regardless.
  *
- * @param {string} dataRoot  - Full path to AppData\Roaming\Package Guard
+ * @param {string} dataRoot  - Full path to AppData\Roaming\PackageGuardian
  * @param {object} paths     - The rp.paths object from runtimePaths.js
  * @returns {Promise<{ success: boolean, removed: string[], failed: Array<{path:string, error:string}> }>}
  */

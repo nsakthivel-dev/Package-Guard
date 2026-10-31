@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain, Menu, dialog, Tray, nativeImage, Notificati
 // This must be the very first Electron call so that the taskbar, toast
 // notifications, and jump lists all identify the app correctly.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.lupusventure.packageguard');
+  app.setAppUserModelId('com.lupusventure.packageguardian');
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -23,8 +23,10 @@ if (!gotTheLock) {
       path.resolve(__dirname, '../../../.env'),
       path.resolve(__dirname, '../../../../.env'),
       path.resolve(__dirname, '../../.env'),
+      path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'PackageGuardian', '.env'),
       path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'PackageGuard', '.env'),
       path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Package Guard', '.env'),
+      path.join(os.homedir(), '.packageguardian', '.env'),
       path.join(os.homedir(), '.packageguard', '.env'),
     ];
     try {
@@ -147,6 +149,7 @@ if (!gotTheLock) {
   const venvHandler = require('./handlers/venvHandler');
   const cliInstaller = require('./handlers/cliInstaller');
   const projectEnvHandler = require('./handlers/projectEnvironmentHandler');
+  const metadataHandler = require('./handlers/metadataHandler');
   const { PipeServer } = require('./pipe-server');
   const { openDatabase } = require('@package-guard/shared/db');
   const {
@@ -331,7 +334,7 @@ function createTray() {
     : nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5gMWEiE3C8v3AAAAXUlEQVQ4y2NgGAWjYBSMAtIAHxsDA8N/Bv6vDAwMf6A0K2EA2MCE/w0MDAz/oTTI6f8MDAz/IeIgA6B+gBr9H8YmXgOwGfSfgYEBpgaXAUz/Gf4j0yD7YBSAAtIAAI6EE6S7uX0mAAAAAElFTkSuQmCC');
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show Package Guard', click: () => {
+    { label: 'Show Package Guardian', click: () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.show();
         mainWindow.focus();
@@ -345,7 +348,7 @@ function createTray() {
       app.quit();
     }}
   ]);
-  tray.setToolTip('Package Guard');
+  tray.setToolTip('Package Guardian');
   tray.setContextMenu(contextMenu);
   tray.on('double-click', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -385,7 +388,9 @@ async function performFullScan() {
       if (env.type === 'pip' || env.type === 'venv' || env.type === 'conda') {
         const list = await pipHandler.listPackages(env.path === 'pip' || env.path === 'python' ? null : env.path);
         packages = list.map(p => {
-          const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+          const existing = dbHandler.getPackages(env.id).find(ep => 
+            dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+          );
           return {
             name: p.name,
             installedVersion: p.version,
@@ -395,13 +400,18 @@ async function performFullScan() {
             environmentPath: env.path,
             latestVersion: existing?.latestVersion || null,
             status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-            groupName: existing?.groupName || null
+            groupName: existing?.groupName || null,
+            summary: existing?.summary || null,
+            description: existing?.description || null,
+            homepageUrl: existing?.homepageUrl || null
           };
         });
       } else if (env.type === 'npm') {
         const list = await npmHandler.listPackages(env.path === 'npm' ? null : env.path);
         packages = list.map(p => {
-          const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+          const existing = dbHandler.getPackages(env.id).find(ep => 
+            dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+          );
           return {
             name: p.name,
             installedVersion: p.version,
@@ -411,13 +421,18 @@ async function performFullScan() {
             environmentPath: env.path,
             latestVersion: existing?.latestVersion || null,
             status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-            groupName: existing?.groupName || null
+            groupName: existing?.groupName || null,
+            summary: existing?.summary || null,
+            description: existing?.description || null,
+            homepageUrl: existing?.homepageUrl || null
           };
         });
       } else if (env.type === 'pnpm') {
         const list = await pnpmHandler.listPackages(env.path === 'pnpm' ? null : env.path);
         packages = list.map(p => {
-          const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+          const existing = dbHandler.getPackages(env.id).find(ep => 
+            dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+          );
           return {
             name: p.name,
             installedVersion: p.version,
@@ -427,13 +442,18 @@ async function performFullScan() {
             environmentPath: env.path,
             latestVersion: existing?.latestVersion || null,
             status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-            groupName: existing?.groupName || null
+            groupName: existing?.groupName || null,
+            summary: existing?.summary || null,
+            description: existing?.description || null,
+            homepageUrl: existing?.homepageUrl || null
           };
         });
       } else if (env.type === 'yarn') {
         const list = await yarnHandler.listPackages(env.path === 'yarn' ? null : env.path);
         packages = list.map(p => {
-          const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+          const existing = dbHandler.getPackages(env.id).find(ep => 
+            dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+          );
           return {
             name: p.name,
             installedVersion: p.version,
@@ -443,7 +463,10 @@ async function performFullScan() {
             environmentPath: env.path,
             latestVersion: existing?.latestVersion || null,
             status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-            groupName: existing?.groupName || null
+            groupName: existing?.groupName || null,
+            summary: existing?.summary || null,
+            description: existing?.description || null,
+            homepageUrl: existing?.homepageUrl || null
           };
         });
       }
@@ -465,7 +488,7 @@ async function performFullScan() {
 
   if (totalUpdates > 0) {
     new Notification({
-      title: 'Package Guard',
+      title: 'Package Guardian',
       body: `Found ${totalUpdates} new updates across your environments.`
     }).show();
   }
@@ -501,7 +524,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    title: 'Package Guard',
+    title: 'Package Guardian',
     backgroundColor: '#09090b',
     autoHideMenuBar: true
   });
@@ -549,7 +572,7 @@ function createWindow() {
   loadMainWindow(mainWindow).catch((err) => {
     log.error('startup', `Failed to load window: ${err?.message || err}`);
     if (!app.isPackaged) {
-      dialog.showErrorBox('Package Guard — startup failed', String(err?.message || err));
+      dialog.showErrorBox('Package Guardian — startup failed', String(err?.message || err));
     }
   });
 }
@@ -572,7 +595,7 @@ async function loadMainWindow(win) {
           'For development with hot reload, run: pnpm dev';
         console.error('[MAIN]', message);
         if (!app.isPackaged) {
-          dialog.showErrorBox('Package Guard — missing build', message);
+          dialog.showErrorBox('Package Guardian — missing build', message);
         }
         return;
       }
@@ -628,10 +651,10 @@ app.whenReady().then(async () => {
   // Recover any offline PENDING events -> SYNCED
   recoverPendingEvents();
 
-  // ── Start Windows Named Pipe server (\\.\pipe\PackageGuard) ───────────────
+  // ── Start Windows Named Pipe server (\\.\pipe\PackageGuardian) ───────────────
   try {
     pipeServer = new PipeServer({
-      onListening: () => log.info('pipe', 'PipeServer listening on \\\\.\\pipe\\PackageGuard'),
+      onListening: () => log.info('pipe', 'PipeServer listening on \\\\.\\pipe\\PackageGuardian'),
       onClientConnected: () => log.info('pipe', 'Client connected to Named Pipe'),
       onRequest: handlePipeRequest,
       onError: (err) => log.error('pipe', `PipeServer error: ${err.message}`)
@@ -818,8 +841,8 @@ ipcMain.handle('cli:install', () => cliInstaller.installCLI());
 ipcMain.handle('cli:uninstall', () => cliInstaller.uninstallCLI());
 ipcMain.handle('cli:status', () => ({
   installedAt: cliInstaller.checkCLIInstalled(),
-  server: { status: 'RUNNING', pipe: '\\\\.\\pipe\\PackageGuard' },
-  pipeName: '\\\\.\\pipe\\PackageGuard'
+  server: { status: 'RUNNING', pipe: '\\\\.\\pipe\\PackageGuardian' },
+  pipeName: '\\\\.\\pipe\\PackageGuardian'
 }));
 
 // Expose runtime data root path so Settings UI can display it
@@ -1193,7 +1216,9 @@ ipcMain.handle('environments:scan', async (_, id) => {
     const list = await pipHandler.listPackages(env.path === 'pip' || env.path === 'python' ? null : env.path);
     packages = list.map(p => {
       // Find existing package to preserve metadata
-      const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+      const existing = dbHandler.getPackages(env.id).find(ep => 
+        dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+      );
       return {
         name: p.name,
         installedVersion: p.version,
@@ -1203,13 +1228,18 @@ ipcMain.handle('environments:scan', async (_, id) => {
         environmentPath: env.path,
         latestVersion: existing?.latestVersion || null,
         status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-        groupName: existing?.groupName || null
+        groupName: existing?.groupName || null,
+        summary: existing?.summary || null,
+        description: existing?.description || null,
+        homepageUrl: existing?.homepageUrl || null
       };
     });
   } else if (env.type === 'npm') {
     const list = await npmHandler.listPackages(env.path === 'npm' ? null : env.path);
     packages = list.map(p => {
-      const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+      const existing = dbHandler.getPackages(env.id).find(ep => 
+        dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+      );
       return {
         name: p.name,
         installedVersion: p.version,
@@ -1219,13 +1249,18 @@ ipcMain.handle('environments:scan', async (_, id) => {
         environmentPath: env.path,
         latestVersion: existing?.latestVersion || null,
         status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-        groupName: existing?.groupName || null
+        groupName: existing?.groupName || null,
+        summary: existing?.summary || null,
+        description: existing?.description || null,
+        homepageUrl: existing?.homepageUrl || null
       };
     });
   } else if (env.type === 'pnpm') {
     const list = await pnpmHandler.listPackages(env.path === 'pnpm' ? null : env.path);
     packages = list.map(p => {
-      const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+      const existing = dbHandler.getPackages(env.id).find(ep => 
+        dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+      );
       return {
         name: p.name,
         installedVersion: p.version,
@@ -1235,13 +1270,18 @@ ipcMain.handle('environments:scan', async (_, id) => {
         environmentPath: env.path,
         latestVersion: existing?.latestVersion || null,
         status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-        groupName: existing?.groupName || null
+        groupName: existing?.groupName || null,
+        summary: existing?.summary || null,
+        description: existing?.description || null,
+        homepageUrl: existing?.homepageUrl || null
       };
     });
   } else if (env.type === 'yarn') {
     const list = await yarnHandler.listPackages(env.path === 'yarn' ? null : env.path);
     packages = list.map(p => {
-      const existing = dbHandler.getPackages(env.id).find(ep => ep.name === p.name);
+      const existing = dbHandler.getPackages(env.id).find(ep => 
+        dbHandler.normalizePackageName(ep.name, ep.ecosystem) === dbHandler.normalizePackageName(p.name, env.type)
+      );
       return {
         name: p.name,
         installedVersion: p.version,
@@ -1251,7 +1291,10 @@ ipcMain.handle('environments:scan', async (_, id) => {
         environmentPath: env.path,
         latestVersion: existing?.latestVersion || null,
         status: existing?.latestVersion ? getStatus(p.version, existing.latestVersion) : (existing?.status || 'unknown'),
-        groupName: existing?.groupName || null
+        groupName: existing?.groupName || null,
+        summary: existing?.summary || null,
+        description: existing?.description || null,
+        homepageUrl: existing?.homepageUrl || null
       };
     });
   }
@@ -1287,6 +1330,15 @@ ipcMain.handle('packages:get', (_, params) => {
   }
 
   return pkgs;
+});
+
+// Package metadata handlers
+ipcMain.handle('packages:getMetadata', async (_, { name, ecosystem }) => {
+  return metadataHandler.fetchPackageMetadata(name, ecosystem);
+});
+
+ipcMain.handle('packages:batchGetMetadata', async (_, items) => {
+  return metadataHandler.batchFetchMetadata(items);
 });
 
 // Venv Handlers
@@ -1818,6 +1870,8 @@ ipcMain.handle('versions:check', async (_, packages) => {
         latest: existing.latestVersion,
         status: existing.status || getStatus(pkg.installedVersion, existing.latestVersion, securityLevel),
         ecosystem: pkg.ecosystem,
+        description: existing.description || null,
+        homepage: existing.homepageUrl || null,
       });
     } else {
       toFetch.push(pkg);
@@ -1838,6 +1892,7 @@ ipcMain.handle('versions:check', async (_, packages) => {
 
       try {
         let latest;
+        let summary = null;
         let description = null;
         let homepage = null;
         if (isNpmCompat) {
@@ -1846,27 +1901,32 @@ ipcMain.handle('versions:check', async (_, packages) => {
             { timeout: 8000 }
           );
           latest = res.data.version;
-          description = typeof res.data.description === 'string' ? res.data.description.trim() : null;
-          homepage = typeof res.data.homepage === 'string' ? res.data.homepage : null;
+          const norm = metadataHandler.normalizeNpmMetadata(res.data);
+          summary = norm.summary;
+          description = norm.description;
+          homepage = norm.homepage;
         } else {
           const res = await axios.get(
             `https://pypi.org/pypi/${name}/json`,
             { timeout: 8000 }
           );
           latest = res.data.info.version;
-          description = typeof res.data.info.summary === 'string' ? res.data.info.summary.trim() : null;
-          homepage = res.data.info.home_page || res.data.info.project_urls?.Homepage || null;
+          const norm = metadataHandler.normalizePyPiMetadata(res.data);
+          summary = norm.summary;
+          description = norm.description;
+          homepage = norm.homepage;
         }
 
         if (!latest) throw new Error('No version found in registry');
 
         const status = getStatus(pkg.installedVersion, latest, securityLevel);
-        const result = { name: pkg.name, latest, status, ecosystem: pkg.ecosystem, description, homepage };
+        const result = { name: pkg.name, latest, status, ecosystem: pkg.ecosystem, summary, description, homepage };
 
         dbHandler.upsertPackage({
           ...pkg,
           latestVersion: latest,
           status: status,
+          summary: summary || pkg.summary || null,
           description: description || pkg.description || null,
           homepageUrl: homepage || pkg.homepageUrl || null,
         }, true);

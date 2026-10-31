@@ -1,4 +1,4 @@
-# 🛡️ PackageGuard
+# 🛡️ Package Guardian
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6.svg?logo=windows)](https://microsoft.com)
@@ -7,17 +7,17 @@
 [![TypeScript](https://img.shields.io/badge/typescript-5.9.2-3178C6.svg?logo=typescript)](https://www.typescriptlang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**PackageGuard** is an institutional-grade security auditing and dependency management platform for Windows. It provides a synchronized desktop interface (Electron + React) alongside an autonomous command-line tool (`pg`), unified by a shared SQLite engine and high-throughput Windows Named Pipe inter-process communication.
+**Package Guardian** is an institutional-grade security auditing and dependency management platform for Windows. It provides a synchronized desktop interface (Electron + React) alongside an autonomous command-line tool (`pg`), unified by a shared SQLite engine and high-throughput Windows Named Pipe inter-process communication.
 
 ---
 
 ## 🏛️ System Architecture
 
-PackageGuard implements a dual-interface architecture where both the Desktop GUI and CLI command runner operate concurrently over a single source of truth.
+Package Guardian implements a dual-interface architecture where both the Desktop GUI and CLI command runner operate concurrently over a single source of truth.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    PackageGuard Platform                    │
+│                 Package Guardian Platform                   │
 └─────────────────────────────────────────────────────────────┘
           │                                         │
     ┌─────▼──────┐                           ┌──────▼─────┐
@@ -41,7 +41,7 @@ PackageGuard implements a dual-interface architecture where both the Desktop GUI
           ▼                                         ▼
    ┌───────────────────────────────────────────────────────┐
    │         Unified SQLite Engine (WAL Mode)              │
-   │  %APPDATA%\PackageGuard\packageguard.db               │
+   │  %APPDATA%\PackageGuardian\data\package_guardian.db   │
    │  - projects, scans, snapshots, snapshot_files,        │
    │    history, config, backups, events, security         │
    └───────────────────────────────────────────────────────┘
@@ -54,7 +54,7 @@ PackageGuard implements a dual-interface architecture where both the Desktop GUI
    - **CLI (`pg`)**: Native Windows standalone executable (`pg.exe`) capable of running completely headless in CI/CD pipelines or automated developer scripts.
 
 2. **Windows Named Pipe IPC**:
-   - Pipe Address: `\\.\pipe\PackageGuard`
+   - Pipe Address: `\\.\pipe\PackageGuardian` (with legacy fallback to `\\.\pipe\PackageGuard`)
    - Protocol: Newline-delimited JSON with handshake contracts (`PING` $\rightarrow$ `PONG` $\rightarrow$ `ACK`).
    - Push notifications notify the Electron UI immediately when CLI actions occur.
 
@@ -73,8 +73,8 @@ PackageGuard implements a dual-interface architecture where both the Desktop GUI
 
 Download the official Windows installer (`.exe`) directly from the GitHub Releases page:
 
-* **Official Releases**: [Package-Guard Releases](https://github.com/nsakthivel-dev/Package-Guard/releases)
-* **Latest Windows Installer**: [PackageGuard-Setup.exe (v1.0.0)](https://github.com/nsakthivel-dev/Package-Guard/releases/download/v1.0.0/PackageGuard-Setup.exe)
+* **Official Releases**: [Package Guardian Releases](https://github.com/nsakthivel-dev/Package-Guard/releases)
+* **Latest Windows Installer**: [PackageGuardian-Setup.exe (v1.0.0)](https://github.com/nsakthivel-dev/Package-Guard/releases/download/v1.0.0/PackageGuardian-Setup.exe)
 
 ---
 

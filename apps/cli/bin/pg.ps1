@@ -1,11 +1,18 @@
 $cliJs = $null
 
 $candidates = @(
+    "$env:ProgramFiles\Package Guardian\cli\cli.js",
+    "$env:ProgramFiles\Package Guardian\cli\index.js",
+    (Join-Path $env:LOCALAPPDATA "Programs\Package Guardian\cli\cli.js"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Package Guardian\cli\index.js"),
     "$env:ProgramFiles\Package Guard\cli\index.js",
+    (Join-Path $env:LOCALAPPDATA "Programs\Package Guard\cli\index.js"),
+    (Join-Path $PSScriptRoot "..\cli\cli.js"),
     (Join-Path $PSScriptRoot "..\cli\index.js"),
+    (Join-Path $PSScriptRoot "cli.js"),
     (Join-Path $PSScriptRoot "index.js"),
-    "C:\Users\nsakt\Downloads\PackageGuard-New\PackageGuard\release\win-unpacked\cli\index.js",
-    "C:\Users\nsakt\Downloads\PackageGuard-New\PackageGuard\apps\cli\dist\index.js"
+    (Join-Path $PSScriptRoot "..\dist\cli.js"),
+    (Join-Path $PSScriptRoot "..\..\..\release\win-unpacked\cli\cli.js")
 )
 
 foreach ($c in $candidates) {
@@ -22,9 +29,13 @@ if ($hasNode -and $cliJs) {
 }
 
 $exeCandidates = @(
+    "$env:ProgramFiles\Package Guardian\PackageGuardian.exe",
+    (Join-Path $env:LOCALAPPDATA "Programs\Package Guardian\PackageGuardian.exe"),
+    (Join-Path $PSScriptRoot "..\PackageGuardian.exe"),
+    (Join-Path $PSScriptRoot "..\..\..\release\win-unpacked\PackageGuardian.exe"),
     "$env:ProgramFiles\Package Guard\PackageGuard.exe",
-    (Join-Path $PSScriptRoot "..\PackageGuard.exe"),
-    "C:\Users\nsakt\Downloads\PackageGuard-New\PackageGuard\release\win-unpacked\PackageGuard.exe"
+    (Join-Path $env:LOCALAPPDATA "Programs\Package Guard\PackageGuard.exe"),
+    (Join-Path $PSScriptRoot "..\PackageGuard.exe")
 )
 
 $pkgExe = $null
@@ -41,5 +52,5 @@ if ($pkgExe -and $cliJs) {
     exit $LASTEXITCODE
 }
 
-Write-Error "[PackageGuard] Error: PackageGuard CLI runtime not found."
+Write-Error "[Package Guardian] Error: Package Guardian CLI runtime not found."
 exit 1

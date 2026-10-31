@@ -1,15 +1,15 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * Package Guard — Runtime Path Manager (Electron Main Process)
+ * Package Guardian — Runtime Path Manager (Electron Main Process)
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * Delegates authoritatively to `@packageguard/shared/paths` to ensure that
  * CLI and Electron ALWAYS access the exact same persistent data directory:
  *
- * %APPDATA%\PackageGuard
+ * %APPDATA%\PackageGuardian
  * │
  * ├── data
- * │   └── packageguard.db
+ * │   └── package_guardian.db
  * │
  * ├── snapshots
  * │
@@ -44,7 +44,7 @@ try {
   }
 }
 
-const APP_NAME = 'PackageGuard';
+const APP_NAME = 'PackageGuardian';
 
 function isPackagedApp() {
   try {
@@ -70,6 +70,7 @@ function resolveDataRoot() {
     return sharedPaths.getUserDataDirectory();
   }
 
+  if (process.env.PACKAGE_GUARDIAN_DATA_ROOT) return process.env.PACKAGE_GUARDIAN_DATA_ROOT;
   if (process.env.PG_DATA_ROOT) return process.env.PG_DATA_ROOT;
 
   const base = process.platform === 'win32'
@@ -86,6 +87,10 @@ function resolveDataRoot() {
 const DATA_ROOT = resolveDataRoot();
 const IS_PACKAGED = isPackagedApp();
 
+const resolvedDbFile = (sharedPaths && typeof sharedPaths.getDatabasePath === 'function')
+  ? sharedPaths.getDatabasePath()
+  : path.join(DATA_ROOT, 'data', 'package_guardian.db');
+
 const paths = {
   root: DATA_ROOT,
   config: path.join(DATA_ROOT, 'config'),
@@ -98,8 +103,8 @@ const paths = {
   venv: path.join(DATA_ROOT, 'venv'),
 
   // Single source of truth database for both Electron and CLI
-  dbFile: path.join(DATA_ROOT, 'data', 'packageguard.db'),
-  coreDbFile: path.join(DATA_ROOT, 'data', 'packageguard.db'),
+  dbFile: resolvedDbFile,
+  coreDbFile: resolvedDbFile,
   serverJson: path.join(DATA_ROOT, 'server.json'),
 
   // Permission state and installation config

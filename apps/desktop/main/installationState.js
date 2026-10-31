@@ -1,22 +1,21 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * Package Guard — Installation State & Permission Manager
+ * Package Guardian — Installation State & Permission Manager
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * Separates INSTALLATION / PERMISSION STATE from PERSISTENT APPLICATION DATA.
  *
  * Persistent User Data:
- *   %LOCALAPPDATA%\Package Guard\data\package-guard.db
- *   %APPDATA%\PackageGuard\data\packageguard.db
- *   %APPDATA%\PackageGuard\snapshots\
+ *   %APPDATA%\PackageGuardian\data\package_guardian.db
+ *   %APPDATA%\PackageGuardian\snapshots\
  *   (Projects, snapshots, history, environments, user preferences)
  *   -> ALWAYS PRESERVED across uninstalls and upgrades.
  *
  * Installation / Permission State:
- *   %APPDATA%\PackageGuard\config\permissions.json
+ *   %APPDATA%\PackageGuardian\config\permissions.json
  *   $INSTDIR\install.ini
  *   -> Bound to the active installation identity.
- *   -> When Package Guard is uninstalled, installation state is wiped.
+ *   -> When Package Guardian is uninstalled, installation state is wiped.
  *   -> When reinstalled, a new installation identity is detected and permission
  *      resets to fresh-install state (null) so the user is prompted again.
  *   -> On normal upgrade, the installation identity is preserved, keeping

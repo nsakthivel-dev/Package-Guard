@@ -13,9 +13,9 @@ export async function executeFixSecurity(
 
   if (!project || !isInitialized(projectDir, project)) {
     if (isJson) {
-      outputError("Package Guard has not been initialized in this directory.", "NOT_INITIALIZED");
+      outputError("Package Guardian has not been initialized in this directory.", "NOT_INITIALIZED");
     } else {
-      console.error("Error: Package Guard has not been initialized in this directory.\n");
+      console.error("Error: Package Guardian has not been initialized in this directory.\n");
     }
     return 3;
   }
